@@ -1,4 +1,4 @@
-## `HIPE_functions.py`
+## `hipe_functions.py`
 
 Jython functions for the HIPE software. 
 
