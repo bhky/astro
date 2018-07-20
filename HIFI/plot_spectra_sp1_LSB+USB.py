@@ -1,3 +1,4 @@
+#!/usr/bin/env python2.7
 """
 usage:
 ./script.py a.XX-LSB.sp1.dat a.XX-USB.sp1.dat \

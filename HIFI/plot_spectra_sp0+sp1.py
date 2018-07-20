@@ -1,3 +1,4 @@
+#!/usr/bin/env python2.7
 """
 usage:
 ./script.py a.sp0.dat a.sp1.dat b.sp0.dat b.sp1.dat ...
