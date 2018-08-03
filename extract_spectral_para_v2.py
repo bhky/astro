@@ -87,21 +87,21 @@ class SpecPara(object):
       ncom: number of separate velocity components above n_sigma * rms.
 
    -----------------------------------
-   Updated 2017-10-26 Bosco Yung
+   Updated 2018-08-03 Bosco Yung
    """
 
    def __init__(self, input_file, rms, n_sigma=3, n_bin=2, sep=' ', \
                 skiprows=0):
-      ### Check input
+      # Check input.
       if n_bin < 2:
          print 'n_bin has to be >= 2'
          exit(1)
 
-      ### Read input file
+      # Read input file.
       vel_all, flux_all = np.loadtxt(input_file, delimiter=sep, unpack=True,
                                      usecols=(0,1), skiprows=skiprows)
-      ### Discard the channels not meeting up the detection criteria, 
-      ### make new lists
+      # Discard the channels not meeting up the detection criteria, 
+      # make new lists.
       vel = []; flux = []; bins = []
       rms = float(rms)
       for i in range(len(flux_all) - n_bin + 1):
@@ -120,23 +120,23 @@ class SpecPara(object):
       vel=self.vel; flux=self.flux; bins=self.bins
       if len(vel) != 0:
 
-         ### min and max velocities
+         # Find min and max velocities.
          velmin = min(vel)
          velmax = max(vel)
-         ### Velocity coverage
+         # Find velocity coverage.
          velcov = velmax - velmin
-         ### Average or mid-point velocity coverage
+         # Find average or mid-point velocity coverage.
          velave = (velmin + velmax) / 2.0
          
-         ### Peak velocity and flux
-         ### It is assumed here that there is only ONE max flux value
+         # Find peak velocity and flux.
+         # It is assumed here that there is only ONE max flux value.
          pvel = vel[list(flux).index(max(flux))] 
          pflux = max(flux)
 
-         ### Integrated flux, flux-weighted mean velocity, 
-         ### and number of velocity components
-         ### The "trapeziums" method is used to find iflux
-         ### First need to be sure if the "next" bin exists before computing
+         # Find integrated flux, flux-weighted mean velocity, and number of 
+         # velocity components.
+         # The "trapeziums" method is used to find iflux.
+         # First need to be sure if the "next" bin exists before computing.
          velflux = []
          areas = []
          ncom = 1
@@ -148,8 +148,8 @@ class SpecPara(object):
                ncom += 1
          int_flux = sum(areas)
 
-         ### Add back the last entry to VelFlux then calculate the 
-         ### flux-weighted mean velocity
+         # Add back the last entry to VelFlux then calculate the 
+         # flux-weighted mean velocity.
          fvel = (sum(velflux) + vel[len(vel)-1] * flux[len(vel)-1]) / sum(flux)
 
 
