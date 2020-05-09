@@ -1,4 +1,4 @@
-# astro
+# Astro
 This repository is for sharing some of my simple but effective codes used for 
 astronomical analysis. Description of each code can be found inside the 
 corresponding code file. **NOT regularly maintained anymore.**
