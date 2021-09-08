@@ -131,7 +131,7 @@ def mkLinemask(obs, freqRanges=None, lineFreqs=None, vexp=15, usevexp=True, \
 
 def stat(sp, excludePairs=None, **kwargs):
    """
-   rms(sp, excludePairs=None, **kwargs)
+   stat(sp, excludePairs=None, **kwargs)
 
    Return three arrays in a list containing the rms, mean, and median values 
    of different segments of the given spectral dataset. The values are 
