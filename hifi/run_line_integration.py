@@ -1,9 +1,45 @@
 #!/usr/bin/env python3
 
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+LINE_TABLE = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.cwleo.sort.ver.alpha.csv"
+OBS_TABLE = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
+
+
+def find_lines(
+        min_freq: float,
+        max_freq: float,
+        line_table_path: str,
+        delimiter: str = ":"
+) -> List[Tuple[str, float]]:
+    """
+    Return list of (species_str, line_freq0_float).
+    """
+    lines: List[Tuple[str, float]] = []
+    with open(line_table_path, "r") as f:
+        for row in f.readlines():
+            row = row.strip("\n").split(delimiter)
+            species = str(row[0])
+            line_freq = float(row[1])
+            if min_freq <= line_freq <= max_freq:
+                lines.append((species, line_freq))
+    return lines
+
+
+def load_objects_and_vlsrs(
+        obs_table_path: str,
+        delimiter: str = ";"
+) -> Tuple[Dict[str, str], Dict[str, float]]:
+    obs_ids, obj_names, vlsrs = np.loadtxt(
+        obs_table_path, unpack=True, usecols=[0, 2, 13],
+        skiprows=1, delimiter=delimiter, dtype=str
+    )
+    obj_name_dict = dict(zip(obs_ids, obj_names))
+    vlsr_dict = dict(zip(obs_ids, vlsrs.astype(float)))
+    return obj_name_dict, vlsr_dict
 
 
 def load_spectrum_dat(dat_path: str) -> Tuple[np.ndarray, np.ndarray, float]:
@@ -36,42 +72,20 @@ def find_line_limits(
 ) -> Tuple[float, float]:
     ascending_freq_cumulative_areas = np.cumsum(areas)
     descending_freq_cumulative_ares = np.cumsum(areas[::-1])[::-1]
-
-    # delta_freq = 0.11  # GHz.
-    # # Ascending freq direction.
-    # asc_cond = np.logical_and(
-    #     np.less_equal(obs_freq, freqs),
-    #     np.less_equal(freqs, obs_freq + delta_freq)
-    # )
-    # asc_range_idxes = np.nonzero(asc_cond)
-    # asc_min_idx, asc_max_idx = np.min(asc_range_idxes), np.max(asc_range_idxes)
-    # end_idx = int(
-    #     np.argmax(ascending_freq_cumulative_areas[int(asc_min_idx): int(asc_max_idx)])
-    #     + asc_min_idx
-    # )
-    # # Descending freq direction.
-    # des_cond = np.logical_and(
-    #     np.less_equal(obs_freq - delta_freq, freqs),
-    #     np.less_equal(freqs, obs_freq)
-    # )
-    # des_range_idxes = np.nonzero(des_cond)
-    # des_min_idx, des_max_idx = np.min(des_range_idxes), np.max(des_range_idxes)
-    # start_idx = int(
-    #     np.argmax(descending_freq_cumulative_ares[int(des_min_idx): int(des_max_idx)])
-    #     + des_min_idx
-    # )
     obs_idx = int(np.min(np.nonzero(np.less_equal(obs_freq, freqs))))
 
     asc_cumulated_flux_change = 0
     end_idx = obs_idx
     while asc_cumulated_flux_change >= 0:
-        asc_cumulated_flux_change = ascending_freq_cumulative_areas[end_idx + 1] - ascending_freq_cumulative_areas[end_idx]
+        asc_cumulated_flux_change = \
+            ascending_freq_cumulative_areas[end_idx + 1] - ascending_freq_cumulative_areas[end_idx]
         end_idx += 1
 
     des_cumulated_flux_change = 0
     start_idx = obs_idx
     while des_cumulated_flux_change >= 0:
-        des_cumulated_flux_change = descending_freq_cumulative_ares[start_idx - 1] - descending_freq_cumulative_ares[start_idx]
+        des_cumulated_flux_change = \
+            descending_freq_cumulative_ares[start_idx - 1] - descending_freq_cumulative_ares[start_idx]
         start_idx -= 1
     return start_idx, end_idx
 
