@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from dataclasses import dataclass
 from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
@@ -29,17 +30,31 @@ def find_lines(
     return lines
 
 
-def load_objects_and_vlsrs(
+@dataclass
+class Observation:
+    obs_id: int
+    band: str
+    object_name: str
+    vlsr: float
+
+
+def make_obs_dict(
         obs_table_path: str,
         delimiter: str = ";"
-) -> Tuple[Dict[str, str], Dict[str, float]]:
-    obs_ids, obj_names, vlsrs = np.loadtxt(
-        obs_table_path, unpack=True, usecols=[0, 2, 13],
+) -> Dict[int, Observation]:
+    """
+    Return dict of {obs_id: Observation}.
+    """
+    obs_ids, bands, obj_names, vlsrs = np.loadtxt(
+        obs_table_path, unpack=True, usecols=[0, 1, 2, 13],
         skiprows=1, delimiter=delimiter, dtype=str
     )
-    obj_name_dict = dict(zip(obs_ids, obj_names))
-    vlsr_dict = dict(zip(obs_ids, vlsrs.astype(float)))
-    return obj_name_dict, vlsr_dict
+    obs_dict: Dict[int, Observation] = {}
+    for obs_id, band, obj_name, vlsr in zip(obs_ids, bands, obj_names, vlsrs):
+        obs_dict[int(obs_id)] = Observation(
+            int(obs_id), band, obj_name, float(vlsr)
+        )
+    return obs_dict
 
 
 def load_spectrum_dat(dat_path: str) -> Tuple[np.ndarray, np.ndarray, float]:
