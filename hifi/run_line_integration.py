@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,17 +17,32 @@ def find_lines(
         delimiter: str = ":"
 ) -> List[Tuple[str, float]]:
     """
-    Return list of (species_str, line_freq0_float).
+    Return list of (transition_str, line_rest_freq_float).
     """
     lines: List[Tuple[str, float]] = []
+    skip_one_line = True
     with open(line_table_path, "r") as f:
         for row in f.readlines():
+            if skip_one_line:
+                skip_one_line = False
+                continue
             row = row.strip("\n").split(delimiter)
-            species = str(row[0])
-            line_freq = float(row[1])
+            transition = str(row[0])
+            line_freq = float(row[2])
             if min_freq <= line_freq <= max_freq:
-                lines.append((species, line_freq))
+                lines.append((transition, line_freq))
     return lines
+
+
+def is_line(
+        freqs: np.ndarray,
+        fluxes: np.ndarray,
+        obs_freq: float,
+        rms: float
+) -> bool:
+    assert min(freqs) <= obs_freq <= max(freqs)
+    idx = int(np.min(np.nonzero(np.less_equal(obs_freq, freqs))))
+    return min(fluxes[idx - 5: idx + 5]) >= rms * 3.0
 
 
 @dataclass
@@ -38,23 +53,20 @@ class Observation:
     vlsr: float
 
 
-def make_obs_dict(
+def get_observations(
         obs_table_path: str,
         delimiter: str = ";"
-) -> Dict[int, Observation]:
-    """
-    Return dict of {obs_id: Observation}.
-    """
+) -> List[Observation]:
     obs_ids, bands, obj_names, vlsrs = np.loadtxt(
         obs_table_path, unpack=True, usecols=[0, 1, 2, 13],
         skiprows=1, delimiter=delimiter, dtype=str
     )
-    obs_dict: Dict[int, Observation] = {}
+    observations: List[Observation] = []
     for obs_id, band, obj_name, vlsr in zip(obs_ids, bands, obj_names, vlsrs):
-        obs_dict[int(obs_id)] = Observation(
-            int(obs_id), band, obj_name, float(vlsr)
+        observations.append(
+            Observation(int(obs_id), band, obj_name, float(vlsr))
         )
-    return obs_dict
+    return observations
 
 
 def load_spectrum_dat(dat_path: str) -> Tuple[np.ndarray, np.ndarray, float]:
@@ -108,66 +120,113 @@ def find_line_limits(
 def plot(
         lsb_freqs: np.ndarray,
         lsb_fluxes: np.ndarray,
-        areas: np.ndarray,
-        obs_freq: float,
-        start_freq: float,
-        end_freq: float,
+        lsb_obs_freqs: List[float],
+        lsb_start_freqs: List[float],
+        lsb_end_freqs: List[float],
         usb_freqs: np.ndarray,
+        usb_obs_freqs: List[float],
+        usb_start_freqs: List[float],
+        usb_end_freqs: List[float],
 ) -> None:
-    fig, axes = plt.subplots(2, 1)
+    fig, ax = plt.subplots()
 
     # Plot spectrum.
-    axes[0].step(lsb_freqs[:-1], lsb_fluxes[:-1])
-    usb_ax = axes[0].twiny()
-    usb_ax.step(usb_freqs[:-1], np.ones_like(usb_freqs[:-1]), c="none")  # Dummy.
-
-    # Plot cumulative (flux) areas.
-    cumulative_areas = np.cumsum(areas)
-    axes[1].step(lsb_freqs[:-1], cumulative_areas)
-    reversed_cumulative_areas = np.cumsum(areas[::-1])[::-1]
-    axes[1].step(lsb_freqs[:-1], reversed_cumulative_areas)
+    ax.step(lsb_freqs, lsb_fluxes)
+    usb_ax = ax.twiny()
+    usb_ax.step(usb_freqs, np.ones_like(usb_freqs), c="none")  # Dummy.
 
     # Plot integration limits.
-    # todo: use a loop to plot multiple limits for multiple lines.
-    axes[0].plot([obs_freq, obs_freq], [-0.5, 0.5], c="b")
-    axes[0].plot([start_freq, start_freq], [-0.5, 0.5], c="r")
-    axes[0].plot([end_freq, end_freq], [-0.5, 0.5], c="r")
-    axes[1].plot([obs_freq, obs_freq], [-0.05, 0.15], c="b")
-    axes[1].plot([start_freq, start_freq], [-0.05, 0.15], c="r")
-    axes[1].plot([end_freq, end_freq], [-0.05, 0.15], c="r")
+    for obs_freq, start_freq, end_freq in zip(lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs):
+        ax.plot([obs_freq, obs_freq], [-0.5, 0.5], c="b")
+        ax.plot([start_freq, start_freq], [-0.5, 0.5], c="r")
+        ax.plot([end_freq, end_freq], [-0.5, 0.5], c="r")
+    for obs_freq, start_freq, end_freq in zip(usb_obs_freqs, usb_start_freqs, usb_end_freqs):
+        usb_ax.plot([obs_freq, obs_freq], [-0.5, 0.5], c="b")
+        usb_ax.plot([start_freq, start_freq], [-0.5, 0.5], c="r")
+        usb_ax.plot([end_freq, end_freq], [-0.5, 0.5], c="r")
 
-    # Axes settings.
-    axes[0].set_xlabel("GHz")
-    axes[0].set_ylabel("K")
-    axes[0].tick_params(which="both", direction="in")
-    axes[0].minorticks_on()
+    # ax settings.
+    ax.set_xlabel("GHz")
+    ax.set_ylabel("K")
+    ax.set_xlim(min(lsb_freqs), max(lsb_freqs))
+    ax.tick_params(which="both", direction="in")
+    ax.minorticks_on()
+    usb_ax.set_xlim(min(usb_freqs), max(usb_freqs))
     usb_ax.tick_params(which="both", direction="in")
     usb_ax.minorticks_on()
     usb_ax.invert_xaxis()
-    axes[1].set_xlabel("GHz")
-    axes[1].set_ylabel("K GHz")
-    axes[1].tick_params(which="both", direction="in")
-    axes[1].minorticks_on()
 
     plt.show()
 
 
+def plot_observation(observation: Observation) -> None:
+    base_path = f"Band_{observation.band}/Spectra/{observation.obs_id}"
+    vlsr = observation.vlsr
+    object_name = observation.object_name
+    lsb_dat_path = f"{base_path}.WBS-LSB.sp1.ave.resampled.dat"
+    usb_dat_path = f"{base_path}.WBS-USB.sp1.ave.resampled.dat"
+
+    lsb_freqs, lsb_fluxes, lsb_rms = load_spectrum_dat(lsb_dat_path)
+    usb_freqs, usb_fluxes, usb_rms = load_spectrum_dat(usb_dat_path)
+    assert len(lsb_freqs) == len(usb_freqs)
+
+    lsb_areas = get_trapezoid_areas(lsb_freqs, lsb_fluxes)
+    usb_areas = get_trapezoid_areas(usb_freqs, usb_fluxes)
+
+    lsb_lines = find_lines(min(lsb_freqs), max(lsb_freqs), LINE_TABLE)
+    usb_lines = find_lines(min(usb_freqs), max(usb_freqs), LINE_TABLE)
+
+    # LSB.
+    lsb_transitions: List[str] = []
+    lsb_obs_freqs: List[float] = []
+    lsb_start_freqs: List[float] = []
+    lsb_end_freqs: List[float] = []
+    for transition, rest_freq in lsb_lines:
+        obs_freq = obs_freq_at_vlsr(rest_freq, vlsr)
+        if not min(lsb_freqs) <= obs_freq <= max(lsb_freqs):
+            continue
+        if not is_line(lsb_freqs, lsb_fluxes, obs_freq, lsb_rms):
+            continue
+        start_idx, end_idx = find_line_limits(lsb_freqs, lsb_areas, obs_freq)
+        start_freq, end_freq = lsb_freqs[start_idx], lsb_freqs[end_idx]
+        lsb_transitions.append(transition)
+        lsb_obs_freqs.append(obs_freq)
+        lsb_start_freqs.append(start_freq)
+        lsb_end_freqs.append(end_freq)
+    # USB.
+    usb_transitions: List[str] = []
+    usb_obs_freqs: List[float] = []
+    usb_start_freqs: List[float] = []
+    usb_end_freqs: List[float] = []
+    for transition, rest_freq in usb_lines:
+        obs_freq = obs_freq_at_vlsr(rest_freq, vlsr)
+        if not min(usb_freqs) <= obs_freq <= max(usb_freqs):
+            continue
+        if not is_line(usb_freqs, usb_fluxes, obs_freq, usb_rms):
+            continue
+        start_idx, end_idx = find_line_limits(usb_freqs, usb_areas, obs_freq)
+        start_freq, end_freq = usb_freqs[start_idx], usb_freqs[end_idx]
+        usb_transitions.append(transition)
+        usb_obs_freqs.append(obs_freq)
+        usb_start_freqs.append(start_freq)
+        usb_end_freqs.append(end_freq)
+
+    plot(
+        lsb_freqs, lsb_fluxes, lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs,
+        usb_freqs, usb_obs_freqs, usb_start_freqs, usb_end_freqs
+    )
+
+
 def main() -> None:
-    dat_path = "Band_5a/Spectra/1342204741.WBS-LSB.sp1.ave.resampled.dat"
-    usb_dat_path = "Band_5a/Spectra/1342204741.WBS-USB.sp1.ave.resampled.dat"
-    vlsr = -22.7  # km/s
+    # dat_path = "Band_5a/Spectra/1342204741.WBS-LSB.sp1.ave.resampled.dat"
+    # usb_dat_path = "Band_5a/Spectra/1342204741.WBS-USB.sp1.ave.resampled.dat"
+    # vlsr = -22.7  # km/s
     # rest_freq = 1151.985  # GHz, in LSB
-    rest_freq = 1153.127  # GHz, in LSB
+    # rest_freq = 1153.127  # GHz, in LSB
     # rest_freq = 1162.912  # GHz, in USB
 
-    freqs, fluxes, _ = load_spectrum_dat(dat_path)
-    usb_freqs, _, _ = load_spectrum_dat(usb_dat_path)
-    areas = get_trapezoid_areas(freqs, fluxes)
-
-    obs_freq = obs_freq_at_vlsr(rest_freq, vlsr)
-    start_idx, end_idx = find_line_limits(freqs, areas, obs_freq)
-    start_freq, end_freq = freqs[start_idx], freqs[end_idx]
-    plot(freqs, fluxes, areas, obs_freq, start_freq, end_freq, usb_freqs)
+    observation = Observation(1342204741, "5a", "AFGL 5379", -22.7)
+    plot_observation(observation)
 
 
 if __name__ == "__main__":
