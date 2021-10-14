@@ -106,48 +106,68 @@ def find_line_limits(
 
 
 def plot(
-        freqs: np.ndarray,
-        fluxes: np.ndarray,
+        lsb_freqs: np.ndarray,
+        lsb_fluxes: np.ndarray,
         areas: np.ndarray,
         obs_freq: float,
         start_freq: float,
-        end_freq: float
+        end_freq: float,
+        usb_freqs: np.ndarray,
 ) -> None:
     fig, axes = plt.subplots(2, 1)
 
-    axes[0].step(freqs[:-1], fluxes[:-1])
+    # Plot spectrum.
+    axes[0].step(lsb_freqs[:-1], lsb_fluxes[:-1])
+    usb_ax = axes[0].twiny()
+    usb_ax.step(usb_freqs[:-1], np.ones_like(usb_freqs[:-1]), c="none")  # Dummy.
+
+    # Plot cumulative (flux) areas.
+    cumulative_areas = np.cumsum(areas)
+    axes[1].step(lsb_freqs[:-1], cumulative_areas)
+    reversed_cumulative_areas = np.cumsum(areas[::-1])[::-1]
+    axes[1].step(lsb_freqs[:-1], reversed_cumulative_areas)
+
+    # Plot integration limits.
+    # todo: use a loop to plot multiple limits for multiple lines.
     axes[0].plot([obs_freq, obs_freq], [-0.5, 0.5], c="b")
     axes[0].plot([start_freq, start_freq], [-0.5, 0.5], c="r")
     axes[0].plot([end_freq, end_freq], [-0.5, 0.5], c="r")
-    axes[0].set_xlabel("GHz")
-    axes[0].set_ylabel("K")
-
-    cumulative_areas = np.cumsum(areas)
-    axes[1].step(freqs[:-1], cumulative_areas)
-    reversed_cumulative_areas = np.cumsum(areas[::-1])[::-1]
-    axes[1].step(freqs[:-1], reversed_cumulative_areas)
     axes[1].plot([obs_freq, obs_freq], [-0.05, 0.15], c="b")
     axes[1].plot([start_freq, start_freq], [-0.05, 0.15], c="r")
     axes[1].plot([end_freq, end_freq], [-0.05, 0.15], c="r")
+
+    # Axes settings.
+    axes[0].set_xlabel("GHz")
+    axes[0].set_ylabel("K")
+    axes[0].tick_params(which="both", direction="in")
+    axes[0].minorticks_on()
+    usb_ax.tick_params(which="both", direction="in")
+    usb_ax.minorticks_on()
+    usb_ax.invert_xaxis()
     axes[1].set_xlabel("GHz")
     axes[1].set_ylabel("K GHz")
+    axes[1].tick_params(which="both", direction="in")
+    axes[1].minorticks_on()
 
     plt.show()
 
 
 def main() -> None:
     dat_path = "Band_5a/Spectra/1342204741.WBS-LSB.sp1.ave.resampled.dat"
+    usb_dat_path = "Band_5a/Spectra/1342204741.WBS-USB.sp1.ave.resampled.dat"
     vlsr = -22.7  # km/s
-    rest_freq = 1151.985  # GHz
-    #rest_freq = 1153.127  # GHz
+    # rest_freq = 1151.985  # GHz, in LSB
+    rest_freq = 1153.127  # GHz, in LSB
+    # rest_freq = 1162.912  # GHz, in USB
 
     freqs, fluxes, _ = load_spectrum_dat(dat_path)
+    usb_freqs, _, _ = load_spectrum_dat(usb_dat_path)
     areas = get_trapezoid_areas(freqs, fluxes)
 
     obs_freq = obs_freq_at_vlsr(rest_freq, vlsr)
     start_idx, end_idx = find_line_limits(freqs, areas, obs_freq)
     start_freq, end_freq = freqs[start_idx], freqs[end_idx]
-    plot(freqs, fluxes, areas, obs_freq, start_freq, end_freq)
+    plot(freqs, fluxes, areas, obs_freq, start_freq, end_freq, usb_freqs)
 
 
 if __name__ == "__main__":
