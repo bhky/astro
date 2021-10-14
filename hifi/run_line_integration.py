@@ -42,6 +42,7 @@ def is_line(
 ) -> bool:
     assert min(freqs) <= obs_freq <= max(freqs)
     idx = int(np.min(np.nonzero(np.less_equal(obs_freq, freqs))))
+    # Assumption: should have flux larger than, e.g., 3 * rms, for 10 channels.
     return min(fluxes[idx - 5: idx + 5]) >= rms * 3.0
 
 
@@ -118,15 +119,18 @@ def find_line_limits(
 
 
 def plot(
+        observation: Observation,
         lsb_freqs: np.ndarray,
         lsb_fluxes: np.ndarray,
         lsb_obs_freqs: List[float],
         lsb_start_freqs: List[float],
         lsb_end_freqs: List[float],
+        lsb_transitions: List[str],
         usb_freqs: np.ndarray,
         usb_obs_freqs: List[float],
         usb_start_freqs: List[float],
         usb_end_freqs: List[float],
+        usb_transitions: List[str]
 ) -> None:
     fig, ax = plt.subplots()
 
@@ -136,16 +140,30 @@ def plot(
     usb_ax.step(usb_freqs, np.ones_like(usb_freqs), c="none")  # Dummy.
 
     # Plot integration limits.
-    for obs_freq, start_freq, end_freq in zip(lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs):
-        ax.plot([obs_freq, obs_freq], [-0.5, 0.5], c="b")
-        ax.plot([start_freq, start_freq], [-0.5, 0.5], c="r")
-        ax.plot([end_freq, end_freq], [-0.5, 0.5], c="r")
-    for obs_freq, start_freq, end_freq in zip(usb_obs_freqs, usb_start_freqs, usb_end_freqs):
-        usb_ax.plot([obs_freq, obs_freq], [-0.5, 0.5], c="b")
-        usb_ax.plot([start_freq, start_freq], [-0.5, 0.5], c="r")
-        usb_ax.plot([end_freq, end_freq], [-0.5, 0.5], c="r")
+    for obs_freq, start_freq, end_freq, transition in \
+            zip(lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs, lsb_transitions):
+        ax.plot([obs_freq, obs_freq], [-0.1, 0.5], c="b")
+        ax.plot([start_freq, start_freq], [-0.1, 0.5], c="r")
+        ax.plot([end_freq, end_freq], [-0.1, 0.5], c="r")
+        # Note: when "position" is used, the first two coordinates are dummy.
+        ax.text(
+            0, 0, transition,
+            position=(obs_freq, 0.6), ha="center", va="bottom",
+            fontsize=8, color="red", rotation=90
+        )
+    for obs_freq, start_freq, end_freq, transition in \
+            zip(usb_obs_freqs, usb_start_freqs, usb_end_freqs, usb_transitions):
+        usb_ax.plot([obs_freq, obs_freq], [-0.1, 0.5], c="b")
+        usb_ax.plot([start_freq, start_freq], [-0.1, 0.5], c="r")
+        usb_ax.plot([end_freq, end_freq], [-0.1, 0.5], c="r")
+        # Note: when "position" is used, the first two coordinates are dummy.
+        usb_ax.text(
+            0, 0, transition,
+            position=(obs_freq, 0.6), ha="center", va="bottom",
+            fontsize=8, color="red", rotation=90
+        )
 
-    # ax settings.
+    # axes settings.
     ax.set_xlabel("GHz")
     ax.set_ylabel("K")
     ax.set_xlim(min(lsb_freqs), max(lsb_freqs))
@@ -156,13 +174,18 @@ def plot(
     usb_ax.minorticks_on()
     usb_ax.invert_xaxis()
 
+    ax.set_title(
+        f"{observation.obs_id}.WBS, "
+        f"{observation.object_name}, "
+        f"V_lsr = {observation.vlsr}"
+    )
+
     plt.show()
 
 
 def plot_observation(observation: Observation) -> None:
     base_path = f"Band_{observation.band}/Spectra/{observation.obs_id}"
     vlsr = observation.vlsr
-    object_name = observation.object_name
     lsb_dat_path = f"{base_path}.WBS-LSB.sp1.ave.resampled.dat"
     usb_dat_path = f"{base_path}.WBS-USB.sp1.ave.resampled.dat"
 
@@ -212,8 +235,10 @@ def plot_observation(observation: Observation) -> None:
         usb_end_freqs.append(end_freq)
 
     plot(
-        lsb_freqs, lsb_fluxes, lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs,
-        usb_freqs, usb_obs_freqs, usb_start_freqs, usb_end_freqs
+        observation,
+        lsb_freqs, lsb_fluxes,
+        lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs, lsb_transitions,
+        usb_freqs, usb_obs_freqs, usb_start_freqs, usb_end_freqs, usb_transitions
     )
 
 
