@@ -1,31 +1,29 @@
 #!/usr/bin/env python3
 
+import os
 from dataclasses import dataclass
 from typing import List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-LINE_TABLE = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.cwleo.sort.ver.alpha.csv"
-OBS_TABLE = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
+LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.cwleo.sort.ver.alpha.csv"
+OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
 
 
 def find_lines(
         min_freq: float,
         max_freq: float,
-        line_table_path: str,
+        line_table_path: str = LINE_TABLE_PATH,
         delimiter: str = ":"
 ) -> List[Tuple[str, float]]:
     """
     Return list of (transition_str, line_rest_freq_float).
     """
     lines: List[Tuple[str, float]] = []
-    skip_one_line = True
     with open(line_table_path, "r") as f:
-        for row in f.readlines():
-            if skip_one_line:
-                skip_one_line = False
-                continue
+        rows = f.readlines()[1:]
+        for row in rows:
             row = row.strip("\n").split(delimiter)
             transition = str(row[0])
             line_freq = float(row[2])
@@ -55,7 +53,7 @@ class Observation:
 
 
 def get_observations(
-        obs_table_path: str,
+        obs_table_path: str = OBS_TABLE_PATH,
         delimiter: str = ";"
 ) -> List[Observation]:
     obs_ids, bands, obj_names, vlsrs = np.loadtxt(
@@ -176,8 +174,9 @@ def plot(
 
     ax.set_title(
         f"{observation.obs_id}.WBS, "
+        f"{observation.band}, "
         f"{observation.object_name}, "
-        f"V_lsr = {observation.vlsr}"
+        f"v_lsr = {observation.vlsr}"
     )
 
     plt.show()
@@ -189,6 +188,9 @@ def plot_observation(observation: Observation) -> None:
     lsb_dat_path = f"{base_path}.WBS-LSB.sp1.ave.resampled.dat"
     usb_dat_path = f"{base_path}.WBS-USB.sp1.ave.resampled.dat"
 
+    if not os.path.exists(lsb_dat_path) or not os.path.exists(usb_dat_path):
+        return
+
     lsb_freqs, lsb_fluxes, lsb_rms = load_spectrum_dat(lsb_dat_path)
     usb_freqs, usb_fluxes, usb_rms = load_spectrum_dat(usb_dat_path)
     assert len(lsb_freqs) == len(usb_freqs)
@@ -196,8 +198,8 @@ def plot_observation(observation: Observation) -> None:
     lsb_areas = get_trapezoid_areas(lsb_freqs, lsb_fluxes)
     usb_areas = get_trapezoid_areas(usb_freqs, usb_fluxes)
 
-    lsb_lines = find_lines(min(lsb_freqs), max(lsb_freqs), LINE_TABLE)
-    usb_lines = find_lines(min(usb_freqs), max(usb_freqs), LINE_TABLE)
+    lsb_lines = find_lines(min(lsb_freqs), max(lsb_freqs))
+    usb_lines = find_lines(min(usb_freqs), max(usb_freqs))
 
     # LSB.
     lsb_transitions: List[str] = []
@@ -243,15 +245,10 @@ def plot_observation(observation: Observation) -> None:
 
 
 def main() -> None:
-    # dat_path = "Band_5a/Spectra/1342204741.WBS-LSB.sp1.ave.resampled.dat"
-    # usb_dat_path = "Band_5a/Spectra/1342204741.WBS-USB.sp1.ave.resampled.dat"
-    # vlsr = -22.7  # km/s
-    # rest_freq = 1151.985  # GHz, in LSB
-    # rest_freq = 1153.127  # GHz, in LSB
-    # rest_freq = 1162.912  # GHz, in USB
-
-    observation = Observation(1342204741, "5a", "AFGL 5379", -22.7)
-    plot_observation(observation)
+    observations = get_observations()
+    for observation in observations:
+        if observation.object_name == "IRC+10216":
+            plot_observation(observation)
 
 
 if __name__ == "__main__":
