@@ -8,8 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.cwleo.sort.ver.alpha.edited.csv"
-SUPP_LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/linie_hifi_band17_n_oproczIRC.csv"
-DIFF_LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/extra_lines.cwleo.csv"
+SUPP_LINE_TABLE_PATH = "/home/byung/HIPE//Data/ObsIDs/Lines_Tables/linie_hifi_band17_n_oproczIRC.edited.csv"
 
 OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
 
