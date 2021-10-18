@@ -2,12 +2,15 @@
 
 import os
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Set, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.cwleo.sort.ver.alpha.csv"
+LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.cwleo.sort.ver.alpha.edited.csv"
+SUPP_LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/linie_hifi_band17_n_oproczIRC.csv"
+DIFF_LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/extra_lines.cwleo.csv"
+
 OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
 
 
@@ -15,19 +18,36 @@ def find_lines(
         min_freq: float,
         max_freq: float,
         line_table_path: str = LINE_TABLE_PATH,
-        delimiter: str = ":"
+        supp_line_table_path: str = SUPP_LINE_TABLE_PATH,
+        delimiter: str = ";"
 ) -> List[Tuple[str, float]]:
     """
     Return list of (transition_str, line_rest_freq_float).
     """
+    transition_set: Set[str] = set()
+    quantum_number_set: Set[str] = set()
     lines: List[Tuple[str, float]] = []
     with open(line_table_path, "r") as f:
         rows = f.readlines()[1:]
-        for row in rows:
-            row = row.strip("\n").split(delimiter)
+        for row_str in rows:
+            row = row_str.strip("\n").split(delimiter)
             transition = str(row[0])
             line_freq = float(row[2])
+            quantum_number = str(row[6])
             if min_freq <= line_freq <= max_freq:
+                lines.append((transition, line_freq))
+                transition_set.add(transition)
+                quantum_number_set.add(quantum_number)
+    with open(supp_line_table_path, "r") as f:
+        rows = f.readlines()[1:]
+        for row_str in rows:
+            row = row_str.strip("\n").split(delimiter)
+            transition = str(row[0])
+            quantum_number = str(row[1])
+            line_freq = float(row[2])
+            if min_freq <= line_freq <= max_freq:
+                if transition in transition_set and quantum_number in quantum_number_set:
+                    continue
                 lines.append((transition, line_freq))
     return lines
 
@@ -131,18 +151,18 @@ def plot(
         # Note: when "position" is used, the first two coordinates are dummy.
         ax.text(
             0, 0, transition,
-            position=(obs_freq, 0.6), ha="center", va="bottom",
+            position=(obs_freq, 0.3), ha="center", va="bottom",
             fontsize=8, color="red", rotation=90
         )
     for obs_freq, start_freq, end_freq, transition in \
             zip(usb_obs_freqs, usb_start_freqs, usb_end_freqs, usb_transitions):
-        usb_ax.plot([obs_freq, obs_freq], [-0.1, 0.2], c="cyan")
+        usb_ax.plot([obs_freq, obs_freq], [-0.1, 0.4], c="cyan")
         usb_ax.plot([start_freq, start_freq], [-0.1, 0.2], c="r")
         usb_ax.plot([end_freq, end_freq], [-0.1, 0.2], c="r")
         # Note: when "position" is used, the first two coordinates are dummy.
         usb_ax.text(
             0, 0, transition,
-            position=(obs_freq, 0.6), ha="center", va="bottom",
+            position=(obs_freq, 0.5), ha="center", va="bottom",
             fontsize=8, color="red", rotation=90
         )
 
