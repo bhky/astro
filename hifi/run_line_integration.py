@@ -76,16 +76,6 @@ def load_spectrum_dat(dat_path: str) -> Tuple[np.ndarray, np.ndarray, float]:
     return freqs, fluxes, rms
 
 
-def get_trapezoid_areas(freqs: np.ndarray, fluxes: np.ndarray) -> np.ndarray:
-    areas: List[float] = []
-    for i in range(len(freqs) - 1):
-        area = (fluxes[i] + fluxes[i + 1]) * (freqs[i + 1] - freqs[i]) / 2.0
-        if np.isnan(area):
-            area = 0.0
-        areas.append(area)
-    return np.array(areas)
-
-
 def obs_freq_at_vlsr(rest_freq: float, vlsr: float) -> float:
     c = 299792.458  # km/s
     return (1.0 - (vlsr / c)) * rest_freq
@@ -93,25 +83,20 @@ def obs_freq_at_vlsr(rest_freq: float, vlsr: float) -> float:
 
 def find_line_limits(
         freqs: np.ndarray,
-        areas: np.ndarray,
+        fluxes: np.ndarray,
+        rms: float,
         obs_freq: float
 ) -> Tuple[float, float]:
-    ascending_freq_cumulative_areas = np.cumsum(areas)
-    descending_freq_cumulative_ares = np.cumsum(areas[::-1])[::-1]
     obs_idx = int(np.min(np.nonzero(np.less_equal(obs_freq, freqs))))
-
-    asc_cumulated_flux_change = 0
     end_idx = obs_idx
-    while asc_cumulated_flux_change >= 0:
-        asc_cumulated_flux_change = \
-            ascending_freq_cumulative_areas[end_idx + 1] - ascending_freq_cumulative_areas[end_idx]
+    for asc_flux in fluxes[obs_idx:]:
+        if asc_flux <= rms:
+            break
         end_idx += 1
-
-    des_cumulated_flux_change = 0
     start_idx = obs_idx
-    while des_cumulated_flux_change >= 0:
-        des_cumulated_flux_change = \
-            descending_freq_cumulative_ares[start_idx - 1] - descending_freq_cumulative_ares[start_idx]
+    for des_flux in fluxes[:obs_idx + 1][::-1]:
+        if des_flux <= rms:
+            break
         start_idx -= 1
     return start_idx, end_idx
 
@@ -140,9 +125,9 @@ def plot(
     # Plot integration limits.
     for obs_freq, start_freq, end_freq, transition in \
             zip(lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs, lsb_transitions):
-        ax.plot([obs_freq, obs_freq], [-0.1, 0.5], c="b")
-        ax.plot([start_freq, start_freq], [-0.1, 0.5], c="r")
-        ax.plot([end_freq, end_freq], [-0.1, 0.5], c="r")
+        ax.plot([obs_freq, obs_freq], [-0.1, 0.2], c="b")
+        ax.plot([start_freq, start_freq], [-0.1, 0.2], c="r")
+        ax.plot([end_freq, end_freq], [-0.1, 0.2], c="r")
         # Note: when "position" is used, the first two coordinates are dummy.
         ax.text(
             0, 0, transition,
@@ -151,9 +136,9 @@ def plot(
         )
     for obs_freq, start_freq, end_freq, transition in \
             zip(usb_obs_freqs, usb_start_freqs, usb_end_freqs, usb_transitions):
-        usb_ax.plot([obs_freq, obs_freq], [-0.1, 0.5], c="b")
-        usb_ax.plot([start_freq, start_freq], [-0.1, 0.5], c="r")
-        usb_ax.plot([end_freq, end_freq], [-0.1, 0.5], c="r")
+        usb_ax.plot([obs_freq, obs_freq], [-0.1, 0.2], c="cyan")
+        usb_ax.plot([start_freq, start_freq], [-0.1, 0.2], c="r")
+        usb_ax.plot([end_freq, end_freq], [-0.1, 0.2], c="r")
         # Note: when "position" is used, the first two coordinates are dummy.
         usb_ax.text(
             0, 0, transition,
@@ -193,10 +178,6 @@ def plot_observation(observation: Observation) -> None:
 
     lsb_freqs, lsb_fluxes, lsb_rms = load_spectrum_dat(lsb_dat_path)
     usb_freqs, usb_fluxes, usb_rms = load_spectrum_dat(usb_dat_path)
-    assert len(lsb_freqs) == len(usb_freqs)
-
-    lsb_areas = get_trapezoid_areas(lsb_freqs, lsb_fluxes)
-    usb_areas = get_trapezoid_areas(usb_freqs, usb_fluxes)
 
     lsb_lines = find_lines(min(lsb_freqs), max(lsb_freqs))
     usb_lines = find_lines(min(usb_freqs), max(usb_freqs))
@@ -212,7 +193,7 @@ def plot_observation(observation: Observation) -> None:
             continue
         if not is_line(lsb_freqs, lsb_fluxes, obs_freq, lsb_rms):
             continue
-        start_idx, end_idx = find_line_limits(lsb_freqs, lsb_areas, obs_freq)
+        start_idx, end_idx = find_line_limits(lsb_freqs, lsb_fluxes, lsb_rms, obs_freq)
         start_freq, end_freq = lsb_freqs[start_idx], lsb_freqs[end_idx]
         lsb_transitions.append(transition)
         lsb_obs_freqs.append(obs_freq)
@@ -229,7 +210,7 @@ def plot_observation(observation: Observation) -> None:
             continue
         if not is_line(usb_freqs, usb_fluxes, obs_freq, usb_rms):
             continue
-        start_idx, end_idx = find_line_limits(usb_freqs, usb_areas, obs_freq)
+        start_idx, end_idx = find_line_limits(usb_freqs, usb_fluxes, usb_rms, obs_freq)
         start_freq, end_freq = usb_freqs[start_idx], usb_freqs[end_idx]
         usb_transitions.append(transition)
         usb_obs_freqs.append(obs_freq)
