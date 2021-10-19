@@ -30,7 +30,7 @@ def find_lines(
         rows = f.readlines()[1:]
         for row_str in rows:
             row = row_str.strip("\n").split(delimiter)
-            transition = str(row[0])
+            transition = str(row[0]).strip()
             line_freq = float(row[2])
             quantum_number = str(row[6])
             if min_freq <= line_freq <= max_freq:
@@ -41,7 +41,7 @@ def find_lines(
         rows = f.readlines()[1:]
         for row_str in rows:
             row = row_str.strip("\n").split(delimiter)
-            transition = str(row[0])
+            transition = str(row[0]).strip()
             quantum_number = str(row[1])
             line_freq = float(row[2])
             if min_freq <= line_freq <= max_freq:
