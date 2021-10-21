@@ -19,35 +19,32 @@ def find_lines(
         line_table_path: str = LINE_TABLE_PATH,
         supp_line_table_path: str = SUPP_LINE_TABLE_PATH,
         delimiter: str = ";"
-) -> List[Tuple[str, float]]:
-    """
-    Return list of (transition_str, line_rest_freq_float).
-    """
-    transition_set: Set[str] = set()
+) -> List[Tuple[str, str, float]]:
+    name_set: Set[str] = set()
     quantum_number_set: Set[str] = set()
-    lines: List[Tuple[str, float]] = []
+    lines: List[Tuple[str, str, float]] = []
     with open(line_table_path, "r") as f:
         rows = f.readlines()[1:]
         for row_str in rows:
             row = row_str.strip("\n").split(delimiter)
-            transition = str(row[0]).strip()
+            name = str(row[0]).strip()
             line_freq = float(row[2])
             quantum_number = str(row[6])
             if min_freq <= line_freq <= max_freq:
-                lines.append((transition, line_freq))
-                transition_set.add(transition)
+                lines.append((name, quantum_number, line_freq))
+                name_set.add(name)
                 quantum_number_set.add(quantum_number)
     with open(supp_line_table_path, "r") as f:
         rows = f.readlines()[1:]
         for row_str in rows:
             row = row_str.strip("\n").split(delimiter)
-            transition = str(row[0]).strip()
+            name = str(row[0]).strip()
             quantum_number = str(row[1])
             line_freq = float(row[2])
             if min_freq <= line_freq <= max_freq:
-                if transition in transition_set and quantum_number in quantum_number_set:
+                if name in name_set and quantum_number in quantum_number_set:
                     continue
-                lines.append((transition, line_freq))
+                lines.append((name, quantum_number, line_freq))
     return lines
 
 
@@ -231,7 +228,7 @@ def plot_observation(observation: Observation) -> None:
     lsb_obs_freqs: List[float] = []
     lsb_start_freqs: List[float] = []
     lsb_end_freqs: List[float] = []
-    for transition, rest_freq in lsb_lines:
+    for name, quantum_number, rest_freq in lsb_lines:
         obs_freq = obs_freq_at_vlsr(rest_freq, vlsr)
         if not min(lsb_freqs) <= obs_freq <= max(lsb_freqs):
             continue
@@ -239,7 +236,7 @@ def plot_observation(observation: Observation) -> None:
             continue
         start_idx, end_idx = find_line_limits(lsb_freqs, lsb_fluxes, lsb_rms, obs_freq)
         start_freq, end_freq = lsb_freqs[start_idx], lsb_freqs[end_idx]
-        lsb_transitions.append(transition)
+        lsb_transitions.append(name + " " + quantum_number)
         lsb_obs_freqs.append(obs_freq)
         lsb_start_freqs.append(start_freq)
         lsb_end_freqs.append(end_freq)
@@ -248,7 +245,7 @@ def plot_observation(observation: Observation) -> None:
     usb_obs_freqs: List[float] = []
     usb_start_freqs: List[float] = []
     usb_end_freqs: List[float] = []
-    for transition, rest_freq in usb_lines:
+    for name, quantum_number, rest_freq in usb_lines:
         obs_freq = obs_freq_at_vlsr(rest_freq, vlsr)
         if not min(usb_freqs) <= obs_freq <= max(usb_freqs):
             continue
@@ -256,7 +253,7 @@ def plot_observation(observation: Observation) -> None:
             continue
         start_idx, end_idx = find_line_limits(usb_freqs, usb_fluxes, usb_rms, obs_freq)
         start_freq, end_freq = usb_freqs[start_idx], usb_freqs[end_idx]
-        usb_transitions.append(transition)
+        usb_transitions.append(name + " " + quantum_number)
         usb_obs_freqs.append(obs_freq)
         usb_start_freqs.append(start_freq)
         usb_end_freqs.append(end_freq)
