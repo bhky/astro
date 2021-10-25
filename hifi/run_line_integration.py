@@ -101,17 +101,18 @@ def find_line_limits(
         freqs: np.ndarray,
         fluxes: np.ndarray,
         rms: float,
-        obs_freq: float
+        obs_freq: float,
+        rms_factor: float = 1.0
 ) -> Tuple[float, float]:
     obs_idx = int(np.min(np.nonzero(np.less_equal(obs_freq, freqs))))
     end_idx = obs_idx
     for asc_flux in fluxes[obs_idx:]:
-        if asc_flux <= rms:
+        if asc_flux <= rms * rms_factor:
             break
         end_idx += 1
     start_idx = obs_idx
     for des_flux in fluxes[:obs_idx + 1][::-1]:
-        if des_flux <= rms:
+        if des_flux <= rms * rms_factor:
             break
         start_idx -= 1
     # Fix possible out of bound cases, e.g., when line is at boundary.
@@ -134,7 +135,7 @@ def make_plot(
         usb_start_freqs: List[float],
         usb_end_freqs: List[float],
         usb_transitions: List[str],
-        show_only: bool = True
+        show_only: bool
 ) -> None:
     fig, ax = plt.subplots()
 
@@ -143,18 +144,19 @@ def make_plot(
     usb_ax = ax.twiny()
     usb_ax.step(usb_freqs, np.ones_like(usb_freqs), c="none")  # Dummy.
 
-    lsb_obs_freq_mark_range = [-7 * lsb_rms, 6 * lsb_rms]
-    lsb_start_freq_mark_range = [-5 * lsb_rms, 5 * lsb_rms]
-    lsb_end_freq_mark_range = [-5 * lsb_rms, 5 * lsb_rms]
-    usb_obs_freq_mark_range = [-7 * lsb_rms, 20 * lsb_rms]
-    usb_start_freq_mark_range = [-5 * lsb_rms, 5 * lsb_rms]
-    usb_end_freq_mark_range = [-5 * lsb_rms, 5 * lsb_rms]
+    lsb_obs_freq_mark_range = [-7 * lsb_rms, 15 * lsb_rms]
+    lsb_start_freq_mark_range = [-8 * lsb_rms, 8 * lsb_rms]
+    lsb_end_freq_mark_range = [-8 * lsb_rms, 8 * lsb_rms]
+    usb_obs_freq_mark_range = [-7 * lsb_rms, 40 * lsb_rms]
+    usb_start_freq_mark_range = [-8 * lsb_rms, 8 * lsb_rms]
+    usb_end_freq_mark_range = [-8 * lsb_rms, 8 * lsb_rms]
     if show_only:
         font_size = 8
         y_lim = ()
     else:
         font_size = 5
-        y_lim = (-7 * lsb_rms, 25 * lsb_rms)
+        y_max = max(1.1 * np.nanmax(lsb_fluxes), 20 * lsb_rms)
+        y_lim = (-10 * lsb_rms, y_max)
 
     # Plot integration limits.
     for obs_freq, start_freq, end_freq, transition in \
@@ -165,7 +167,7 @@ def make_plot(
         # Note: when "position" is used, the first two coordinates are dummy.
         ax.text(
             0, 0, transition,
-            position=(obs_freq, 11 * lsb_rms), ha="center", va="bottom",
+            position=(obs_freq, 20 * lsb_rms), ha="center", va="bottom",
             fontsize=font_size, color="blue", rotation=90
         )
     for obs_freq, start_freq, end_freq, transition in \
@@ -176,7 +178,7 @@ def make_plot(
         # Note: when "position" is used, the first two coordinates are dummy.
         usb_ax.text(
             0, 0, transition,
-            position=(obs_freq, 25 * lsb_rms), ha="center", va="bottom",
+            position=(obs_freq, 45 * lsb_rms), ha="center", va="bottom",
             fontsize=font_size, color="cyan", rotation=90
         )
 
@@ -208,7 +210,7 @@ def make_plot(
         plt.close()
 
 
-def plot_observation(observation: Observation) -> None:
+def plot_observation(observation: Observation, show_only: bool = True) -> None:
     base_path = f"Band_{observation.band}/Spectra/{observation.obs_id}"
     vlsr = observation.vlsr
     lsb_dat_path = f"{base_path}.WBS-LSB.sp1.ave.resampled.dat"
@@ -261,7 +263,8 @@ def plot_observation(observation: Observation) -> None:
     make_plot(
         observation, lsb_rms, lsb_freqs, lsb_fluxes,
         lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs, lsb_transitions,
-        usb_freqs, usb_obs_freqs, usb_start_freqs, usb_end_freqs, usb_transitions
+        usb_freqs, usb_obs_freqs, usb_start_freqs, usb_end_freqs, usb_transitions,
+        show_only
     )
 
 
@@ -269,7 +272,7 @@ def main() -> None:
     observations = get_observations()
     for observation in observations:
         if observation.object_name == "IRC+10216":
-            plot_observation(observation)
+            plot_observation(observation, show_only=True)
 
 
 if __name__ == "__main__":
