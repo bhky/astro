@@ -17,7 +17,7 @@ OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-band
 OUTPUT_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/cwleo.result.csv"
 
 
-def find_lines(
+def find_line_identifications(
         min_freq: float,
         max_freq: float,
         line_table_path: str = LINE_TABLE_PATH,
@@ -26,7 +26,7 @@ def find_lines(
 ) -> List[Tuple[str, str, float]]:
     name_set: Set[str] = set()
     quantum_number_set: Set[str] = set()
-    lines: List[Tuple[str, str, float]] = []
+    lines_identifications: List[Tuple[str, str, float]] = []
     with open(line_table_path, "r") as f:
         rows = f.readlines()[1:]
         for row_str in rows:
@@ -35,7 +35,7 @@ def find_lines(
             line_freq = float(row[2])
             quantum_number = str(row[6])
             if min_freq <= line_freq <= max_freq:
-                lines.append((name, quantum_number, line_freq))
+                lines_identifications.append((name, quantum_number, line_freq))
                 name_set.add(name)
                 quantum_number_set.add(quantum_number)
     with open(supp_line_table_path, "r") as f:
@@ -48,8 +48,8 @@ def find_lines(
             if min_freq <= line_freq <= max_freq:
                 if name in name_set and quantum_number in quantum_number_set:
                     continue
-                lines.append((name, quantum_number, line_freq))
-    return lines
+                lines_identifications.append((name, quantum_number, line_freq))
+    return lines_identifications
 
 
 def is_line(
@@ -216,12 +216,54 @@ def make_plot(
         plt.close()
 
 
-def get_info_and_plot_observation(
+@dataclass
+class Line:
+    metadata: List[List[Any]]
+    transitions: List[str]
+    obs_freqs: List[float]
+    start_freqs: List[float]
+    end_freqs: List[float]
+
+
+def extract_line_data(
+        observation: Observation,
+        freqs: np.ndarray,
+        fluxes: np.ndarray,
+        rms: float,
+        side_band: str,
+        lines: List[Tuple[str, str, float]]
+) -> Line:
+    metadata: List[List[Any]] = []
+    transitions: List[str] = []
+    obs_freqs: List[float] = []
+    start_freqs: List[float] = []
+    end_freqs: List[float] = []
+    for name, quantum_number, rest_freq in lines:
+        obs_freq = obs_freq_at_vlsr(rest_freq, observation.vlsr)
+        if not min(freqs) <= obs_freq <= max(freqs):
+            continue
+        if not is_line(freqs, fluxes, obs_freq, rms):
+            continue
+        start_idx, end_idx = find_line_limits(freqs, fluxes, rms, obs_freq)
+        start_freq, end_freq = freqs[start_idx], freqs[end_idx]
+        transitions.append(str(name) + " " + f"{rest_freq:.3f}")
+        obs_freqs.append(obs_freq)
+        start_freqs.append(start_freq)
+        end_freqs.append(end_freq)
+
+        peak_flux = round(max(fluxes[start_idx: end_idx]), 3)
+        metadata.append([
+            observation.obs_id, observation.band, observation.object_name, observation.vlsr,
+            side_band, name, quantum_number, rest_freq, obs_freq, peak_flux
+        ])
+    return Line(metadata, transitions, obs_freqs, start_freqs, end_freqs)
+
+
+def get_line_metadata_and_plot_observation(
         observation: Observation,
         show_only: bool = True
 ) -> List[List[Any]]:
     base_path = f"Band_{observation.band}/Spectra/{observation.obs_id}"
-    vlsr = observation.vlsr
     lsb_dat_path = f"{base_path}.WBS-LSB.sp1.ave.resampled.dat"
     usb_dat_path = f"{base_path}.WBS-USB.sp1.ave.resampled.dat"
 
@@ -231,66 +273,30 @@ def get_info_and_plot_observation(
     lsb_freqs, lsb_fluxes, lsb_rms = load_spectrum_dat(lsb_dat_path)
     usb_freqs, usb_fluxes, usb_rms = load_spectrum_dat(usb_dat_path)
 
-    lsb_lines = find_lines(min(lsb_freqs), max(lsb_freqs))
-    usb_lines = find_lines(min(usb_freqs), max(usb_freqs))
+    lsb_line_ids = find_line_identifications(min(lsb_freqs), max(lsb_freqs))
+    usb_line_ids = find_line_identifications(min(usb_freqs), max(usb_freqs))
 
-    object_lines: List[List[Any]] = []
-
-    # LSB.
-    lsb_transitions: List[str] = []
-    lsb_obs_freqs: List[float] = []
-    lsb_start_freqs: List[float] = []
-    lsb_end_freqs: List[float] = []
-    for name, quantum_number, rest_freq in lsb_lines:
-        obs_freq = obs_freq_at_vlsr(rest_freq, vlsr)
-        if not min(lsb_freqs) <= obs_freq <= max(lsb_freqs):
-            continue
-        if not is_line(lsb_freqs, lsb_fluxes, obs_freq, lsb_rms):
-            continue
-        start_idx, end_idx = find_line_limits(lsb_freqs, lsb_fluxes, lsb_rms, obs_freq)
-        start_freq, end_freq = lsb_freqs[start_idx], lsb_freqs[end_idx]
-        lsb_transitions.append(str(name) + " " + f"{rest_freq:.3f}")
-        lsb_obs_freqs.append(obs_freq)
-        lsb_start_freqs.append(start_freq)
-        lsb_end_freqs.append(end_freq)
-
-        peak_flux = round(max(lsb_fluxes[start_idx: end_idx]), 3)
-        object_lines.append([
-            observation.obs_id, observation.band, observation.object_name, observation.vlsr,
-            "LSB", name, quantum_number, rest_freq, obs_freq, peak_flux
-        ])
-    # USB.
-    usb_transitions: List[str] = []
-    usb_obs_freqs: List[float] = []
-    usb_start_freqs: List[float] = []
-    usb_end_freqs: List[float] = []
-    for name, quantum_number, rest_freq in usb_lines:
-        obs_freq = obs_freq_at_vlsr(rest_freq, vlsr)
-        if not min(usb_freqs) <= obs_freq <= max(usb_freqs):
-            continue
-        if not is_line(usb_freqs, usb_fluxes, obs_freq, usb_rms):
-            continue
-        start_idx, end_idx = find_line_limits(usb_freqs, usb_fluxes, usb_rms, obs_freq)
-        start_freq, end_freq = usb_freqs[start_idx], usb_freqs[end_idx]
-        usb_transitions.append(str(name) + " " + f"{rest_freq:.3f}")
-        usb_obs_freqs.append(obs_freq)
-        usb_start_freqs.append(start_freq)
-        usb_end_freqs.append(end_freq)
-
-        peak_flux = round(max(lsb_fluxes[start_idx: end_idx]), 3)
-        object_lines.append([
-            observation.obs_id, observation.band, observation.object_name, observation.vlsr,
-            "USB", name, quantum_number, rest_freq, obs_freq, peak_flux
-        ])
+    metadata: List[List[Any]] = []
+    lsb_line = extract_line_data(
+        observation, lsb_freqs, lsb_fluxes, lsb_rms, "LSB", lsb_line_ids
+    )
+    usb_line = extract_line_data(
+        observation, usb_freqs, usb_fluxes, usb_rms, "USB", usb_line_ids
+    )
+    metadata.extend(lsb_line.metadata)
+    metadata.extend(usb_line.metadata)
 
     make_plot(
-        observation, lsb_rms, lsb_freqs, lsb_fluxes,
-        lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs, lsb_transitions,
-        usb_freqs, usb_obs_freqs, usb_start_freqs, usb_end_freqs, usb_transitions,
+        observation,
+        lsb_rms, lsb_freqs, lsb_fluxes,
+        lsb_line.obs_freqs, lsb_line.start_freqs,
+        lsb_line.end_freqs, lsb_line.transitions,
+        usb_freqs,
+        usb_line.obs_freqs, usb_line.start_freqs,
+        usb_line.end_freqs, usb_line.transitions,
         show_only
     )
-
-    return object_lines
+    return metadata
 
 
 def main() -> None:
@@ -304,8 +310,10 @@ def main() -> None:
     observations = get_observations()
     for observation in observations:
         if observation.object_name == "IRC+10216":
-            object_lines = get_info_and_plot_observation(observation, show_only=False)
-            lines_for_table.extend(object_lines)
+            line_data = get_line_metadata_and_plot_observation(
+                observation, show_only=True
+            )
+            lines_for_table.extend(line_data)
 
     df_line = pd.DataFrame(lines_for_table, columns=columns)
     df_line = df_line.sort_values(["band", "obs_id", "observed_freq_GHz"])
