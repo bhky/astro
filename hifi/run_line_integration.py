@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 
+import csv
 import os
 from dataclasses import dataclass
-from typing import List, Set, Tuple
+from typing import Any, List, Set, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.cwleo.sort.ver.alpha.edited.csv"
 SUPP_LINE_TABLE_PATH = "/home/byung/HIPE//Data/ObsIDs/Lines_Tables/linie_hifi_band17_n_oproczIRC.edited.csv"
 
 OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
+
+OUTPUT_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/cwleo.result.csv"
 
 
 def find_lines(
@@ -140,46 +144,48 @@ def make_plot(
     fig, ax = plt.subplots()
 
     # Plot spectrum.
-    ax.step(lsb_freqs, lsb_fluxes, lw=1)
+    ax.step(lsb_freqs, lsb_fluxes, lw=0.8, c="black")
     usb_ax = ax.twiny()
     usb_ax.step(usb_freqs, np.ones_like(usb_freqs), c="none")  # Dummy.
 
-    lsb_obs_freq_mark_range = [-7 * lsb_rms, 15 * lsb_rms]
+    lsb_obs_freq_mark_range = [-7 * lsb_rms, 7 * lsb_rms]
     lsb_start_freq_mark_range = [-8 * lsb_rms, 8 * lsb_rms]
     lsb_end_freq_mark_range = [-8 * lsb_rms, 8 * lsb_rms]
-    usb_obs_freq_mark_range = [-7 * lsb_rms, 40 * lsb_rms]
+    usb_obs_freq_mark_range = [-7 * lsb_rms, 15 * lsb_rms]
     usb_start_freq_mark_range = [-8 * lsb_rms, 8 * lsb_rms]
     usb_end_freq_mark_range = [-8 * lsb_rms, 8 * lsb_rms]
     if show_only:
         font_size = 8
         y_lim = ()
+        lw = 1
     else:
         font_size = 5
-        y_max = max(1.1 * np.nanmax(lsb_fluxes), 20 * lsb_rms)
+        y_max = max(0.3 * np.nanmax(lsb_fluxes), 20 * lsb_rms)
         y_lim = (-10 * lsb_rms, y_max)
+        lw = 0.5
 
     # Plot integration limits.
     for obs_freq, start_freq, end_freq, transition in \
             zip(lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs, lsb_transitions):
-        ax.plot([obs_freq, obs_freq], lsb_obs_freq_mark_range, c="blue", lw=1)
-        ax.plot([start_freq, start_freq], lsb_start_freq_mark_range, c="red", lw=1)
-        ax.plot([end_freq, end_freq], lsb_end_freq_mark_range, c="red", lw=1)
+        ax.plot([obs_freq, obs_freq], lsb_obs_freq_mark_range, c="blue", lw=lw)
+        ax.plot([start_freq, start_freq], lsb_start_freq_mark_range, c="gray", lw=lw)
+        ax.plot([end_freq, end_freq], lsb_end_freq_mark_range, c="gray", lw=lw)
         # Note: when "position" is used, the first two coordinates are dummy.
         ax.text(
             0, 0, transition,
-            position=(obs_freq, 20 * lsb_rms), ha="center", va="bottom",
+            position=(obs_freq, 9 * lsb_rms), ha="center", va="bottom",
             fontsize=font_size, color="blue", rotation=90
         )
     for obs_freq, start_freq, end_freq, transition in \
             zip(usb_obs_freqs, usb_start_freqs, usb_end_freqs, usb_transitions):
-        usb_ax.plot([obs_freq, obs_freq], usb_obs_freq_mark_range, c="cyan", lw=1)
-        usb_ax.plot([start_freq, start_freq], usb_start_freq_mark_range, c="red", lw=1)
-        usb_ax.plot([end_freq, end_freq], usb_end_freq_mark_range, c="red", lw=1)
+        usb_ax.plot([obs_freq, obs_freq], usb_obs_freq_mark_range, c="orange", lw=lw)
+        usb_ax.plot([start_freq, start_freq], usb_start_freq_mark_range, c="gray", lw=lw)
+        usb_ax.plot([end_freq, end_freq], usb_end_freq_mark_range, c="gray", lw=lw)
         # Note: when "position" is used, the first two coordinates are dummy.
         usb_ax.text(
             0, 0, transition,
-            position=(obs_freq, 45 * lsb_rms), ha="center", va="bottom",
-            fontsize=font_size, color="cyan", rotation=90
+            position=(obs_freq, 17 * lsb_rms), ha="center", va="bottom",
+            fontsize=font_size, color="orange", rotation=90
         )
 
     # axes settings.
@@ -210,20 +216,25 @@ def make_plot(
         plt.close()
 
 
-def plot_observation(observation: Observation, show_only: bool = True) -> None:
+def get_info_and_plot_observation(
+        observation: Observation,
+        show_only: bool = True
+) -> List[List[Any]]:
     base_path = f"Band_{observation.band}/Spectra/{observation.obs_id}"
     vlsr = observation.vlsr
     lsb_dat_path = f"{base_path}.WBS-LSB.sp1.ave.resampled.dat"
     usb_dat_path = f"{base_path}.WBS-USB.sp1.ave.resampled.dat"
 
     if not os.path.exists(lsb_dat_path) or not os.path.exists(usb_dat_path):
-        return
+        return []
 
     lsb_freqs, lsb_fluxes, lsb_rms = load_spectrum_dat(lsb_dat_path)
     usb_freqs, usb_fluxes, usb_rms = load_spectrum_dat(usb_dat_path)
 
     lsb_lines = find_lines(min(lsb_freqs), max(lsb_freqs))
     usb_lines = find_lines(min(usb_freqs), max(usb_freqs))
+
+    object_lines: List[List[Any]] = []
 
     # LSB.
     lsb_transitions: List[str] = []
@@ -238,10 +249,16 @@ def plot_observation(observation: Observation, show_only: bool = True) -> None:
             continue
         start_idx, end_idx = find_line_limits(lsb_freqs, lsb_fluxes, lsb_rms, obs_freq)
         start_freq, end_freq = lsb_freqs[start_idx], lsb_freqs[end_idx]
-        lsb_transitions.append(name + " " + quantum_number)
+        lsb_transitions.append(str(name) + " " + f"{rest_freq:.3f}")
         lsb_obs_freqs.append(obs_freq)
         lsb_start_freqs.append(start_freq)
         lsb_end_freqs.append(end_freq)
+
+        peak_flux = round(max(lsb_fluxes[start_idx: end_idx]), 3)
+        object_lines.append([
+            observation.obs_id, observation.band, observation.object_name, observation.vlsr,
+            "LSB", name, quantum_number, rest_freq, obs_freq, peak_flux
+        ])
     # USB.
     usb_transitions: List[str] = []
     usb_obs_freqs: List[float] = []
@@ -255,10 +272,16 @@ def plot_observation(observation: Observation, show_only: bool = True) -> None:
             continue
         start_idx, end_idx = find_line_limits(usb_freqs, usb_fluxes, usb_rms, obs_freq)
         start_freq, end_freq = usb_freqs[start_idx], usb_freqs[end_idx]
-        usb_transitions.append(name + " " + quantum_number)
+        usb_transitions.append(str(name) + " " + f"{rest_freq:.3f}")
         usb_obs_freqs.append(obs_freq)
         usb_start_freqs.append(start_freq)
         usb_end_freqs.append(end_freq)
+
+        peak_flux = round(max(lsb_fluxes[start_idx: end_idx]), 3)
+        object_lines.append([
+            observation.obs_id, observation.band, observation.object_name, observation.vlsr,
+            "USB", name, quantum_number, rest_freq, obs_freq, peak_flux
+        ])
 
     make_plot(
         observation, lsb_rms, lsb_freqs, lsb_fluxes,
@@ -267,12 +290,26 @@ def plot_observation(observation: Observation, show_only: bool = True) -> None:
         show_only
     )
 
+    return object_lines
+
 
 def main() -> None:
+    lines_for_table: List[List[Any]] = []
+    columns = [
+        "obs_id", "band", "object", "vlsr_km/s", "side_band",
+        "species_name", "quantum_number",
+        "rest_freq_GHz", "observed_freq_GHz", "peak_K"
+    ]
+
     observations = get_observations()
     for observation in observations:
         if observation.object_name == "IRC+10216":
-            plot_observation(observation, show_only=True)
+            object_lines = get_info_and_plot_observation(observation, show_only=False)
+            lines_for_table.extend(object_lines)
+
+    df_line = pd.DataFrame(lines_for_table, columns=columns)
+    df_line = df_line.sort_values(["band", "obs_id", "observed_freq_GHz"])
+    df_line.to_csv(OUTPUT_TABLE_PATH, sep=";", index=False, quoting=csv.QUOTE_NONE)
 
 
 if __name__ == "__main__":
