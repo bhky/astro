@@ -3,7 +3,7 @@
 import csv
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,13 +19,18 @@ OUTPUT_TABLE_PATH = f"/home/byung/HIPE/Data/ObsIDs/cwleo.result.v{VERSION}.csv"
 def find_line_identifications(
         min_freq: float,
         max_freq: float,
+        object_name: Optional[str],
         line_table_path: str = LINE_TABLE_PATH,
         delimiter: str = ";"
 ) -> List[Tuple[str, str, float]]:
     df = pd.read_csv(line_table_path, delimiter=delimiter)
     cond_1 = min_freq <= df["Freq-GHz(rest frame,redshifted)"]
     cond_2 = df["Freq-GHz(rest frame,redshifted)"] <= max_freq
-    df_found = df[cond_1 & cond_2]
+    if object_name is not None:
+        cond_3 = df[object_name] == 1
+    else:
+        cond_3 = [True] * len(df)
+    df_found = df[cond_1 & cond_2 & cond_3]
 
     names = df_found["Species"].tolist()
     quantum_numbers = df_found["Resolved QNs"].tolist()
@@ -277,6 +282,7 @@ def extract_line_data(
 
 def get_line_metadata_and_plot_observation(
         observation: Observation,
+        use_object_name: bool = True,
         show_only: bool = True
 ) -> List[List[Any]]:
     base_path = f"Band_{observation.band}/Spectra/{observation.obs_id}"
@@ -289,8 +295,13 @@ def get_line_metadata_and_plot_observation(
     lsb_freqs, lsb_fluxes, lsb_rms = load_spectrum_dat(lsb_dat_path)
     usb_freqs, usb_fluxes, usb_rms = load_spectrum_dat(usb_dat_path)
 
-    lsb_line_ids = find_line_identifications(min(lsb_freqs), max(lsb_freqs))
-    usb_line_ids = find_line_identifications(min(usb_freqs), max(usb_freqs))
+    object_name = observation.object_name if use_object_name else None
+    lsb_line_ids = find_line_identifications(
+        min(lsb_freqs), max(lsb_freqs), object_name
+    )
+    usb_line_ids = find_line_identifications(
+        min(usb_freqs), max(usb_freqs), object_name
+    )
 
     lsb_lines = extract_line_data(
         observation, lsb_freqs, lsb_fluxes, lsb_rms, lsb_line_ids, is_lsb=True
@@ -339,10 +350,9 @@ def main() -> None:
 
     observations = get_observations()
     for observation in observations:
-        # if observation.object_name == "IRC+10216":
-        if observation.obs_id == 1342207563:
+        if observation.object_name == "IRC+10216":
             line_metadata = get_line_metadata_and_plot_observation(
-                observation, show_only=False
+                observation, use_object_name=True, show_only=False
             )
             lines_for_table.extend(line_metadata)
 
