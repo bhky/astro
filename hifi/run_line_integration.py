@@ -14,7 +14,7 @@ SUPP_LINE_TABLE_PATH = "/home/byung/HIPE//Data/ObsIDs/Lines_Tables/linie_hifi_ba
 
 OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
 
-OUTPUT_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/cwleo.result.v2.csv"
+OUTPUT_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/cwleo.result.v2-1.csv"
 
 
 def find_line_identifications(
@@ -224,13 +224,16 @@ def find_overlapping_ranges(
     """
     result_dict: Dict[int, List[int]] = {}
     for i in range(len(ranges)):
-        start, end = ranges[i][0], ranges[i][1]
+        start_i, end_i = ranges[i][0], ranges[i][1]
         result_dict[i]: List[int] = []
         for j in range(len(ranges)):
             if j == i:
                 continue
             # Check intersections.
-            if start <= ranges[j][0] <= end or start <= ranges[j][1] <= end:
+            start_j, end_j = ranges[j][0], ranges[j][1]
+            cond_1 = start_i <= start_j <= end_i or start_i <= end_j <= end_i
+            cond_2 = start_j <= start_i <= end_j or start_j <= end_i <= end_j
+            if cond_1 or cond_2:
                 result_dict[i].append(j)
     return result_dict
 
