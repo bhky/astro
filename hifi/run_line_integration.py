@@ -3,53 +3,35 @@
 import csv
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.cwleo.sort.ver.alpha.edited.csv"
-SUPP_LINE_TABLE_PATH = "/home/byung/HIPE//Data/ObsIDs/Lines_Tables/linie_hifi_band17_n_oproczIRC.edited.csv"
-
+LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.objects.ver2.edited.csv"
 OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
 
-OUTPUT_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/cwleo.result.v2-1.csv"
+VERSION = "3"
+OUTPUT_TABLE_PATH = f"/home/byung/HIPE/Data/ObsIDs/cwleo.result.v{VERSION}.csv"
 
 
 def find_line_identifications(
         min_freq: float,
         max_freq: float,
         line_table_path: str = LINE_TABLE_PATH,
-        supp_line_table_path: str = SUPP_LINE_TABLE_PATH,
         delimiter: str = ";"
 ) -> List[Tuple[str, str, float]]:
-    name_set: Set[str] = set()
-    quantum_number_set: Set[str] = set()
-    lines_identifications: List[Tuple[str, str, float]] = []
-    with open(line_table_path, "r") as f:
-        rows = f.readlines()[1:]
-        for row_str in rows:
-            row = row_str.strip("\n").split(delimiter)
-            name = str(row[0]).strip()
-            line_freq = float(row[2])
-            quantum_number = str(row[6])
-            if min_freq <= line_freq <= max_freq:
-                lines_identifications.append((name, quantum_number, line_freq))
-                name_set.add(name)
-                quantum_number_set.add(quantum_number)
-    # with open(supp_line_table_path, "r") as f:
-    #     rows = f.readlines()[1:]
-    #     for row_str in rows:
-    #         row = row_str.strip("\n").split(delimiter)
-    #         name = str(row[0]).strip()
-    #         quantum_number = str(row[1])
-    #         line_freq = float(row[2])
-    #         if min_freq <= line_freq <= max_freq:
-    #             if name in name_set and quantum_number in quantum_number_set:
-    #                 continue
-    #             lines_identifications.append((name, quantum_number, line_freq))
-    return lines_identifications
+    df = pd.read_csv(line_table_path, delimiter=delimiter)
+    cond_1 = min_freq <= df["Freq-GHz(rest frame,redshifted)"]
+    cond_2 = df["Freq-GHz(rest frame,redshifted)"] <= max_freq
+    df_found = df[cond_1 & cond_2]
+
+    names = df_found["Species"].tolist()
+    quantum_numbers = df_found["Resolved QNs"].tolist()
+    line_freqs = df_found["Freq-GHz(rest frame,redshifted)"].tolist()
+    line_identifications = list(zip(names, quantum_numbers, line_freqs))
+    return line_identifications
 
 
 def is_line(
@@ -211,7 +193,8 @@ def make_plot(
     if show_only:
         plt.show()
     else:
-        file_path = f"./Figures/CW_Leo/cwleo.{observation.band}.{observation.obs_id}.WBS.sp1.ave.resampled.lines.pdf"
+        # todo
+        file_path = f"./Figures/CW_Leo/cwleo.{observation.band}.{observation.obs_id}.WBS.sp1.ave.resampled.lines.v{VERSION}.pdf"
         plt.savefig(file_path)
         plt.close()
 
@@ -356,7 +339,8 @@ def main() -> None:
 
     observations = get_observations()
     for observation in observations:
-        if observation.object_name == "IRC+10216":
+        # if observation.object_name == "IRC+10216":
+        if observation.obs_id == 1342207563:
             line_metadata = get_line_metadata_and_plot_observation(
                 observation, show_only=False
             )
