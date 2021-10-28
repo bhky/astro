@@ -12,7 +12,7 @@ import pandas as pd
 LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.objects.ver2.edited.csv"
 OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
 
-VERSION = "3"
+VERSION = "3-1"
 OUTPUT_TABLE_PATH = f"/home/byung/HIPE/Data/ObsIDs/cwleo.result.v{VERSION}.csv"
 
 
@@ -24,13 +24,14 @@ def find_line_identifications(
         delimiter: str = ";"
 ) -> List[Tuple[str, str, float]]:
     df = pd.read_csv(line_table_path, delimiter=delimiter)
+    cond_0 = ~df["Species"].str.contains("#")
     cond_1 = min_freq <= df["Freq-GHz(rest frame,redshifted)"]
     cond_2 = df["Freq-GHz(rest frame,redshifted)"] <= max_freq
     if object_name is not None:
         cond_3 = df[object_name] == 1
     else:
         cond_3 = [True] * len(df)
-    df_found = df[cond_1 & cond_2 & cond_3]
+    df_found = df[cond_0 & cond_1 & cond_2 & cond_3]
 
     names = df_found["Species"].tolist()
     quantum_numbers = df_found["Resolved QNs"].tolist()
