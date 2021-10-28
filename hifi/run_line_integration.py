@@ -157,10 +157,10 @@ class Line:
     quantum_number: str
     rest_freq_GHz: float
     observed_freq_GHz: float
-    start_freq: float
-    end_freq: float
-    peak_flux: float
-    integrated_flux: float
+    start_freq_GHz: float
+    end_freq_GHz: float
+    peak_K: float
+    integrated_K_GHz: float
     blended_transitions: str = ""
 
 
@@ -218,8 +218,8 @@ def make_plot_data(lines: List[Line]) -> Tuple[List[float], List[float], List[fl
     transitions: List[str] = []
     for line in lines:
         obs_freqs.append(line.observed_freq_GHz)
-        start_freqs.append(line.start_freq)
-        end_freqs.append(line.end_freq)
+        start_freqs.append(line.start_freq_GHz)
+        end_freqs.append(line.end_freq_GHz)
         transitions.append(get_transition(line))
     return obs_freqs, start_freqs, end_freqs, transitions
 
@@ -368,6 +368,14 @@ def get_lines_and_plot_observation(
     return lines
 
 
+def reset_values_for_blended_lines(df: pd.DataFrame) -> pd.DataFrame:
+    cond = df["blended_transitions"].str.len() != 0
+    for col in ["start_freq_GHz", "end_freq_GHz", "peak_K", "integrated_K_GHz"]:
+        assert col in df.columns
+        df[col] = np.where(cond, "", df[col])
+    return df
+
+
 def main() -> None:
     all_lines: List[Line] = []
     observations = get_observations()
@@ -381,6 +389,7 @@ def main() -> None:
     records = [asdict(line) for line in all_lines]
     df_line = pd.DataFrame.from_records(records)
     df_line = df_line.sort_values(["band", "obs_id", "observed_freq_GHz"])
+    df_line = reset_values_for_blended_lines(df_line)
     df_line.to_csv(OUTPUT_TABLE_PATH, sep=";", index=False, quoting=csv.QUOTE_NONE)
 
 
