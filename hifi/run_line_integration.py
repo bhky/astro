@@ -2,8 +2,8 @@
 
 import csv
 import os
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import asdict, dataclass
+from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,7 +12,7 @@ import pandas as pd
 LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.objects.ver2.edited.csv"
 OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
 
-VERSION = "3-1"
+VERSION = "4"
 OUTPUT_TABLE_PATH = f"/home/byung/HIPE/Data/ObsIDs/cwleo.result.v{VERSION}.csv"
 
 
@@ -56,8 +56,8 @@ def is_line(
 class Observation:
     obs_id: int
     band: str
-    object_name: str
-    vlsr: float
+    object: str
+    vlsr_kms: float
 
 
 def get_observations(
@@ -113,22 +113,132 @@ def find_line_limits(
     return start_idx, end_idx
 
 
+def find_overlapping_ranges(
+        ranges: List[Tuple[int, int]]
+) -> Dict[int, List[int]]:
+    """
+    Return dict: {index: indices of overlapping ranges}
+    """
+    result_dict: Dict[int, List[int]] = {}
+    for i in range(len(ranges)):
+        start_i, end_i = ranges[i][0], ranges[i][1]
+        result_dict[i]: List[int] = []
+        for j in range(len(ranges)):
+            if j == i:
+                continue
+            # Check intersections.
+            start_j, end_j = ranges[j][0], ranges[j][1]
+            cond_1 = start_i <= start_j <= end_i or start_i <= end_j <= end_i
+            cond_2 = start_j <= start_i <= end_j or start_j <= end_i <= end_j
+            if cond_1 or cond_2:
+                result_dict[i].append(j)
+    return result_dict
+
+
+def get_integrated_flux(
+        freqs: np.ndarray,
+        fluxes: np.ndarray,
+) -> float:
+    areas: List[float] = []
+    for i in range(len(freqs) - 1):
+        area = (fluxes[i] + fluxes[i + 1]) * (freqs[i + 1] - freqs[i]) / 2
+        areas.append(area)
+    return float(sum(areas))
+
+
+@dataclass
+class Line:
+    obs_id: int
+    band: str
+    object: str
+    vlsr_kms: float
+    side_band: str
+    species_name: str
+    quantum_number: str
+    rest_freq_GHz: float
+    observed_freq_GHz: float
+    start_freq: float
+    end_freq: float
+    peak_flux: float
+    integrated_flux: float
+    blended_transitions: str = ""
+
+
+def extract_line_data(
+        observation: Observation,
+        freqs: np.ndarray,
+        fluxes: np.ndarray,
+        rms: float,
+        line_identifications: List[Tuple[str, str, float]],
+        is_lsb: bool
+) -> Tuple[List[Line], List[Tuple[int, int]]]:
+    side_band = "LSB" if is_lsb else "USB"
+    lines: List[Line] = []
+    idx_ranges: List[Tuple[int, int]] = []
+    for name, quantum_number, rest_freq in line_identifications:
+        obs_freq = obs_freq_at_vlsr(rest_freq, observation.vlsr_kms)
+        if not min(freqs) <= obs_freq <= max(freqs):
+            continue
+        if not is_line(freqs, fluxes, obs_freq, rms):
+            continue
+        start_idx, end_idx = find_line_limits(freqs, fluxes, rms, obs_freq)
+        start_freq, end_freq = freqs[start_idx], freqs[end_idx]
+
+        peak_flux = round(max(fluxes[start_idx: end_idx]), 3)
+        integrated_flux = get_integrated_flux(
+            freqs[start_idx: end_idx], fluxes[start_idx: end_idx]
+        )
+
+        lines.append(
+            Line(
+                observation.obs_id, observation.band,
+                observation.object, observation.vlsr_kms,
+                side_band, name, quantum_number, rest_freq, obs_freq,
+                start_freq, end_freq, peak_flux, integrated_flux
+            )
+        )
+
+        if not is_lsb:
+            start_idx = len(freqs) - 1 - start_idx
+            end_idx = len(freqs) - 1 - end_idx
+        idx_ranges.append((min(start_idx, end_idx), max(start_idx, end_idx)))
+
+    return lines, idx_ranges
+
+
+def get_transition(line: Line) -> str:
+    transition = line.species_name + " " + f"{line.rest_freq_GHz:.3f}"
+    return transition
+
+
+def make_plot_data(lines: List[Line]) -> Tuple[List[float], List[float], List[float], List[str]]:
+    obs_freqs: List[float] = []
+    start_freqs: List[float] = []
+    end_freqs: List[float] = []
+    transitions: List[str] = []
+    for line in lines:
+        obs_freqs.append(line.observed_freq_GHz)
+        start_freqs.append(line.start_freq)
+        end_freqs.append(line.end_freq)
+        transitions.append(get_transition(line))
+    return obs_freqs, start_freqs, end_freqs, transitions
+
+
 def make_plot(
         observation: Observation,
         lsb_rms: float,
         lsb_freqs: np.ndarray,
         lsb_fluxes: np.ndarray,
-        lsb_obs_freqs: List[float],
-        lsb_start_freqs: List[float],
-        lsb_end_freqs: List[float],
-        lsb_transitions: List[str],
+        lsb_lines: List[Line],
         usb_freqs: np.ndarray,
-        usb_obs_freqs: List[float],
-        usb_start_freqs: List[float],
-        usb_end_freqs: List[float],
-        usb_transitions: List[str],
+        usb_lines: List[Line],
         show_only: bool
 ) -> None:
+    lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs, lsb_transitions = \
+        make_plot_data(lsb_lines)
+    usb_obs_freqs, usb_start_freqs, usb_end_freqs, usb_transitions = \
+        make_plot_data(usb_lines)
+
     fig, ax = plt.subplots()
 
     # Plot spectrum.
@@ -176,7 +286,7 @@ def make_plot(
             fontsize=font_size, color="orange", rotation=90
         )
 
-    # axes settings.
+    # Axis settings.
     ax.set_xlabel("GHz")
     ax.set_ylabel("K")
     ax.set_xlim(min(lsb_freqs), max(lsb_freqs))
@@ -192,8 +302,8 @@ def make_plot(
     ax.set_title(
         f"{observation.obs_id}.WBS, "
         f"{observation.band}, "
-        f"{observation.object_name}, "
-        f"v_lsr = {observation.vlsr}"
+        f"{observation.object}, "
+        f"v_lsr = {observation.vlsr_kms}"
     )
 
     if show_only:
@@ -205,87 +315,11 @@ def make_plot(
         plt.close()
 
 
-def find_overlapping_ranges(
-        ranges: List[Tuple[int, int]]
-) -> Dict[int, List[int]]:
-    """
-    Return dict: {index: indices of overlapping ranges}
-    """
-    result_dict: Dict[int, List[int]] = {}
-    for i in range(len(ranges)):
-        start_i, end_i = ranges[i][0], ranges[i][1]
-        result_dict[i]: List[int] = []
-        for j in range(len(ranges)):
-            if j == i:
-                continue
-            # Check intersections.
-            start_j, end_j = ranges[j][0], ranges[j][1]
-            cond_1 = start_i <= start_j <= end_i or start_i <= end_j <= end_i
-            cond_2 = start_j <= start_i <= end_j or start_j <= end_i <= end_j
-            if cond_1 or cond_2:
-                result_dict[i].append(j)
-    return result_dict
-
-
-@dataclass
-class Lines:
-    metadata: List[List[Any]]
-    transitions: List[str]
-    obs_freqs: List[float]
-    start_freqs: List[float]
-    end_freqs: List[float]
-    idx_ranges: List[Tuple[int, int]]
-
-
-def extract_line_data(
-        observation: Observation,
-        freqs: np.ndarray,
-        fluxes: np.ndarray,
-        rms: float,
-        lines: List[Tuple[str, str, float]],
-        is_lsb: bool
-) -> Lines:
-    side_band = "LSB" if is_lsb else "USB"
-    metadata: List[List[Any]] = []
-    transitions: List[str] = []
-    obs_freqs: List[float] = []
-    start_freqs: List[float] = []
-    end_freqs: List[float] = []
-    idx_ranges: List[Tuple[int, int]] = []
-    for name, quantum_number, rest_freq in lines:
-        obs_freq = obs_freq_at_vlsr(rest_freq, observation.vlsr)
-        if not min(freqs) <= obs_freq <= max(freqs):
-            continue
-        if not is_line(freqs, fluxes, obs_freq, rms):
-            continue
-        start_idx, end_idx = find_line_limits(freqs, fluxes, rms, obs_freq)
-        start_freq, end_freq = freqs[start_idx], freqs[end_idx]
-        transitions.append(str(name) + " " + f"{rest_freq:.3f}")
-        obs_freqs.append(obs_freq)
-        start_freqs.append(start_freq)
-        end_freqs.append(end_freq)
-
-        peak_flux = round(max(fluxes[start_idx: end_idx]), 3)
-
-        # Note: Metadata is a bit messy, see how it may be improved.
-        metadata.append([
-            observation.obs_id, observation.band, observation.object_name, observation.vlsr,
-            side_band, name, quantum_number, rest_freq, obs_freq, peak_flux
-        ])
-
-        if not is_lsb:
-            start_idx = len(freqs) - 1 - start_idx
-            end_idx = len(freqs) - 1 - end_idx
-        idx_ranges.append((min(start_idx, end_idx), max(start_idx, end_idx)))
-
-    return Lines(metadata, transitions, obs_freqs, start_freqs, end_freqs, idx_ranges)
-
-
-def get_line_metadata_and_plot_observation(
+def get_lines_and_plot_observation(
         observation: Observation,
         use_object_name: bool = True,
         show_only: bool = True
-) -> List[List[Any]]:
+) -> List[Line]:
     base_path = f"Band_{observation.band}/Spectra/{observation.obs_id}"
     lsb_dat_path = f"{base_path}.WBS-LSB.sp1.ave.resampled.dat"
     usb_dat_path = f"{base_path}.WBS-USB.sp1.ave.resampled.dat"
@@ -296,7 +330,7 @@ def get_line_metadata_and_plot_observation(
     lsb_freqs, lsb_fluxes, lsb_rms = load_spectrum_dat(lsb_dat_path)
     usb_freqs, usb_fluxes, usb_rms = load_spectrum_dat(usb_dat_path)
 
-    object_name = observation.object_name if use_object_name else None
+    object_name = observation.object if use_object_name else None
     lsb_line_ids = find_line_identifications(
         min(lsb_freqs), max(lsb_freqs), object_name
     )
@@ -304,60 +338,48 @@ def get_line_metadata_and_plot_observation(
         min(usb_freqs), max(usb_freqs), object_name
     )
 
-    lsb_lines = extract_line_data(
+    lsb_lines, lsb_idx_ranges = extract_line_data(
         observation, lsb_freqs, lsb_fluxes, lsb_rms, lsb_line_ids, is_lsb=True
     )
-    usb_lines = extract_line_data(
+    usb_lines, usb_idx_ranges = extract_line_data(
         observation, usb_freqs, usb_fluxes, usb_rms, usb_line_ids, is_lsb=False
     )
 
     make_plot(
         observation,
-        lsb_rms, lsb_freqs, lsb_fluxes,
-        lsb_lines.obs_freqs, lsb_lines.start_freqs,
-        lsb_lines.end_freqs, lsb_lines.transitions,
-        usb_freqs,
-        usb_lines.obs_freqs, usb_lines.start_freqs,
-        usb_lines.end_freqs, usb_lines.transitions,
+        lsb_rms, lsb_freqs, lsb_fluxes, lsb_lines,
+        usb_freqs, usb_lines,
         show_only
     )
 
-    all_lines_metadata: List[List[Any]] = []
-    all_lines_metadata.extend(lsb_lines.metadata)
-    all_lines_metadata.extend(usb_lines.metadata)
-
-    transitions: List[str] = []
-    transitions.extend(lsb_lines.transitions)
-    transitions.extend(usb_lines.transitions)
+    lines: List[Line] = []
+    lines.extend(lsb_lines)
+    lines.extend(usb_lines)
 
     idx_ranges: List[Tuple[int, int]] = []
-    idx_ranges.extend(lsb_lines.idx_ranges)
-    idx_ranges.extend(usb_lines.idx_ranges)
-    overlapping_dict = find_overlapping_ranges(idx_ranges)
-    for i, indices in overlapping_dict.items():
-        all_lines_metadata[i].append(",".join([transitions[k] for k in indices]))
+    idx_ranges.extend(lsb_idx_ranges)
+    idx_ranges.extend(usb_idx_ranges)
 
-    return all_lines_metadata
+    overlapping_dict = find_overlapping_ranges(idx_ranges)
+    transitions = [get_transition(line) for line in lines]
+    for i, indices in overlapping_dict.items():
+        lines[i].blended_transitions = ",".join([transitions[k] for k in indices])
+
+    return lines
 
 
 def main() -> None:
-    lines_for_table: List[List[Any]] = []
-    columns = [
-        "obs_id", "band", "object", "vlsr_km/s", "side_band",
-        "species_name", "quantum_number",
-        "rest_freq_GHz", "observed_freq_GHz", "peak_K",
-        "blended_transitions"
-    ]
-
+    all_lines: List[Line] = []
     observations = get_observations()
     for observation in observations:
-        if observation.object_name == "IRC+10216":
-            line_metadata = get_line_metadata_and_plot_observation(
+        if observation.object == "IRC+10216":
+            lines = get_lines_and_plot_observation(
                 observation, use_object_name=True, show_only=False
             )
-            lines_for_table.extend(line_metadata)
+            all_lines.extend(lines)
 
-    df_line = pd.DataFrame(lines_for_table, columns=columns)
+    records = [asdict(line) for line in all_lines]
+    df_line = pd.DataFrame.from_records(records)
     df_line = df_line.sort_values(["band", "obs_id", "observed_freq_GHz"])
     df_line.to_csv(OUTPUT_TABLE_PATH, sep=";", index=False, quoting=csv.QUOTE_NONE)
 
