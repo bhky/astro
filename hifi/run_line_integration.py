@@ -94,13 +94,13 @@ def vlsr_at_obs_freq(rest_freq: float, obs_freq: float) -> float:
     return (1.0 - (obs_freq / rest_freq)) * c
 
 
-def find_line_limits(
+def find_line_limit_indices(
         freqs: np.ndarray,
         fluxes: np.ndarray,
         rms: float,
         obs_freq: float,
         rms_factor: float = 1.0
-) -> Tuple[int, int]:
+) -> Tuple[int, int, int]:
     obs_idx = int(np.min(np.nonzero(np.less_equal(obs_freq, freqs))))
     end_idx = obs_idx
     for asc_flux in fluxes[obs_idx:]:
@@ -115,7 +115,7 @@ def find_line_limits(
     # Fix possible out of bound cases, e.g., when line is at boundary.
     start_idx = max(start_idx, 0)
     end_idx = min(end_idx, len(freqs) - 1)
-    return start_idx, end_idx
+    return obs_idx, start_idx, end_idx
 
 
 def find_overlapping_ranges(
@@ -164,9 +164,20 @@ class Line:
     observed_freq_GHz: float
     vblue_kms: float
     vred_kms: float
+    vexp_blue: float
+    vexp_red: float
+    vexp_ratio: float
     peak_K: float
     integrated_K_GHz: float
+    integrated_K_GHz_symmetric: float
     blended_transitions: str = ""
+
+
+# Note: when fields from the Line class has changed, this has to be updated too.
+EXCLUDED_COLUMNS_FOR_BLENDED_TRANSITIONS = [
+    "vblue_kms", "vred_kms", "vexp_blue", "vexp_red", "vexp_ratio",
+    "peak_K", "integrated_K_GHz", "integrated_K_GHz_symmetric"
+]
 
 
 def extract_line_data(
@@ -186,25 +197,46 @@ def extract_line_data(
             continue
         if not is_line(freqs, fluxes, obs_freq, rms):
             continue
-        start_idx, end_idx = find_line_limits(freqs, fluxes, rms, obs_freq)
+        obs_idx, start_idx, end_idx = find_line_limit_indices(
+            freqs, fluxes, rms, obs_freq
+        )
         start_freq, end_freq = freqs[start_idx], freqs[end_idx]
 
-        peak_flux = round(max(fluxes[start_idx: end_idx]), 3)
+        peak_flux = max(fluxes[start_idx: end_idx])
         integrated_flux = get_integrated_flux(
             freqs[start_idx: end_idx], fluxes[start_idx: end_idx]
         )
+        start_idx_diff = abs(start_idx - obs_idx)
+        end_idx_diff = abs(end_idx - obs_idx)
+        if start_idx_diff <= end_idx_diff:
+            integrated_flux_symmetric = get_integrated_flux(
+                freqs[start_idx: obs_idx + start_idx_diff],
+                fluxes[start_idx: obs_idx + start_idx_diff]
+            )
+        else:
+            integrated_flux_symmetric = get_integrated_flux(
+                freqs[obs_idx - end_idx_diff: end_idx],
+                fluxes[obs_idx - end_idx_diff: end_idx]
+            )
 
         vblue, vred = sorted([
             vlsr_at_obs_freq(rest_freq, start_freq),
             vlsr_at_obs_freq(rest_freq, end_freq),
         ])
 
+        vexp_blue = abs(vblue - observation.vlsr_kms)
+        vexp_red = abs(vred - observation.vlsr_kms)
+        vexp_ratio = vexp_blue / vexp_red
+
         lines.append(
             Line(
                 observation.obs_id, observation.band,
                 observation.object, observation.vlsr_kms,
                 side_band, name, quantum_number, rest_freq, obs_freq,
-                vblue, vred, peak_flux, integrated_flux
+                round(vblue, 7), round(vred, 7),
+                round(vexp_blue, 7), round(vexp_red, 7), round(vexp_ratio, 7),
+                round(peak_flux, 7),
+                round(integrated_flux, 7), round(integrated_flux_symmetric, 7)
             )
         )
 
@@ -383,7 +415,7 @@ def get_lines_and_plot_observation(
 
 def reset_values_for_blended_lines(df: pd.DataFrame) -> pd.DataFrame:
     cond = df["blended_transitions"].str.len() != 0
-    for col in ["start_freq_GHz", "end_freq_GHz", "peak_K", "integrated_K_GHz"]:
+    for col in EXCLUDED_COLUMNS_FOR_BLENDED_TRANSITIONS:
         assert col in df.columns
         df[col] = np.where(cond, "", df[col])
     return df
@@ -394,7 +426,7 @@ def main() -> None:
     observations = get_observations()
     for observation in observations:
         if observation.object == "IRC+10216":
-            plot_file_path = f"./Figures/CW_Leo/cwleo.{observation.band}.{observation.obs_id}.WBS.sp1.ave.resampled.lines.v{VERSION}.pdf" 
+            plot_file_path = f"./Figures/CW_Leo/cwleo.{observation.band}.{observation.obs_id}.WBS.sp1.ave.resampled.lines.v{VERSION}.pdf"
             lines = get_lines_and_plot_observation(
                 observation, use_object_name=True, show_only=False,
                 plot_file_path=plot_file_path
