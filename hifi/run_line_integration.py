@@ -12,7 +12,7 @@ import pandas as pd
 LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.objects.ver2.edited.csv"
 OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
 
-VERSION = "4"
+VERSION = "5"
 OUTPUT_TABLE_PATH = f"/home/byung/HIPE/Data/ObsIDs/cwleo.result.v{VERSION}.csv"
 
 
@@ -89,6 +89,11 @@ def obs_freq_at_vlsr(rest_freq: float, vlsr: float) -> float:
     return (1.0 - (vlsr / c)) * rest_freq
 
 
+def vlsr_at_obs_freq(rest_freq: float, obs_freq: float) -> float:
+    c = 299792.458  # km/s
+    return (1.0 - (obs_freq / rest_freq)) * c
+
+
 def find_line_limits(
         freqs: np.ndarray,
         fluxes: np.ndarray,
@@ -157,8 +162,8 @@ class Line:
     quantum_number: str
     rest_freq_GHz: float
     observed_freq_GHz: float
-    start_freq_GHz: float
-    end_freq_GHz: float
+    vblue_kms: float
+    vred_kms: float
     peak_K: float
     integrated_K_GHz: float
     blended_transitions: str = ""
@@ -189,12 +194,17 @@ def extract_line_data(
             freqs[start_idx: end_idx], fluxes[start_idx: end_idx]
         )
 
+        vblue, vred = sorted([
+            vlsr_at_obs_freq(rest_freq, start_freq),
+            vlsr_at_obs_freq(rest_freq, end_freq),
+        ])
+
         lines.append(
             Line(
                 observation.obs_id, observation.band,
                 observation.object, observation.vlsr_kms,
                 side_band, name, quantum_number, rest_freq, obs_freq,
-                start_freq, end_freq, peak_flux, integrated_flux
+                vblue, vred, peak_flux, integrated_flux
             )
         )
 
@@ -218,8 +228,8 @@ def make_plot_data(lines: List[Line]) -> Tuple[List[float], List[float], List[fl
     transitions: List[str] = []
     for line in lines:
         obs_freqs.append(line.observed_freq_GHz)
-        start_freqs.append(line.start_freq_GHz)
-        end_freqs.append(line.end_freq_GHz)
+        start_freqs.append(line.vblue_kms)
+        end_freqs.append(line.vred_kms)
         transitions.append(get_transition(line))
     return obs_freqs, start_freqs, end_freqs, transitions
 
@@ -232,7 +242,8 @@ def make_plot(
         lsb_lines: List[Line],
         usb_freqs: np.ndarray,
         usb_lines: List[Line],
-        show_only: bool
+        show_only: bool,
+        file_path: str
 ) -> None:
     lsb_obs_freqs, lsb_start_freqs, lsb_end_freqs, lsb_transitions = \
         make_plot_data(lsb_lines)
@@ -309,8 +320,6 @@ def make_plot(
     if show_only:
         plt.show()
     else:
-        # todo
-        file_path = f"./Figures/CW_Leo/cwleo.{observation.band}.{observation.obs_id}.WBS.sp1.ave.resampled.lines.v{VERSION}.pdf"
         plt.savefig(file_path)
         plt.close()
 
@@ -318,11 +327,12 @@ def make_plot(
 def get_lines_and_plot_observation(
         observation: Observation,
         use_object_name: bool = True,
-        show_only: bool = True
+        show_only: bool = True,
+        plot_file_path: Optional[str] = None,
 ) -> List[Line]:
-    base_path = f"Band_{observation.band}/Spectra/{observation.obs_id}"
-    lsb_dat_path = f"{base_path}.WBS-LSB.sp1.ave.resampled.dat"
-    usb_dat_path = f"{base_path}.WBS-USB.sp1.ave.resampled.dat"
+    base_dir = f"Band_{observation.band}/Spectra"
+    lsb_dat_path = f"{base_dir}/{observation.obs_id}.WBS-LSB.sp1.ave.resampled.dat"
+    usb_dat_path = f"{base_dir}/{observation.obs_id}.WBS-USB.sp1.ave.resampled.dat"
 
     if not os.path.exists(lsb_dat_path) or not os.path.exists(usb_dat_path):
         return []
@@ -345,11 +355,14 @@ def get_lines_and_plot_observation(
         observation, usb_freqs, usb_fluxes, usb_rms, usb_line_ids, is_lsb=False
     )
 
+    file_name = f"{observation.obs_id}.WBS.sp1.ave.resampled.lines.v{VERSION}.pdf"
+    if plot_file_path is None:
+        plot_file_path = f"{base_dir}/{file_name}"
     make_plot(
         observation,
         lsb_rms, lsb_freqs, lsb_fluxes, lsb_lines,
         usb_freqs, usb_lines,
-        show_only
+        show_only, plot_file_path
     )
 
     lines: List[Line] = []
@@ -381,8 +394,10 @@ def main() -> None:
     observations = get_observations()
     for observation in observations:
         if observation.object == "IRC+10216":
+            plot_file_path = f"./Figures/CW_Leo/cwleo.{observation.band}.{observation.obs_id}.WBS.sp1.ave.resampled.lines.v{VERSION}.pdf" 
             lines = get_lines_and_plot_observation(
-                observation, use_object_name=True, show_only=False
+                observation, use_object_name=True, show_only=False,
+                plot_file_path=plot_file_path
             )
             all_lines.extend(lines)
 
