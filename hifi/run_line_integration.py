@@ -3,6 +3,7 @@
 import csv
 import os
 from dataclasses import asdict, dataclass
+from timeit import default_timer as timer
 from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
@@ -12,8 +13,9 @@ import pandas as pd
 LINE_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Lines_Tables/lines.objects.ver2.edited.csv"
 OBS_TABLE_PATH = "/home/byung/HIPE/Data/ObsIDs/Obs_Tables/Obs-HiFipoint-all-bands_vlsr_2020_2.csv"
 
-VERSION = "5"
-OUTPUT_TABLE_PATH = f"/home/byung/HIPE/Data/ObsIDs/cwleo.result.v{VERSION}.csv"
+VERSION = "1"
+# OUTPUT_TABLE_PATH = f"/home/byung/HIPE/Data/ObsIDs/cwleo.result.v{VERSION}.csv"
+OUTPUT_TABLE_PATH = f"/home/byung/HIPE/Data/ObsIDs/all.result.v{VERSION}.csv"
 
 
 def find_line_identifications(
@@ -27,7 +29,7 @@ def find_line_identifications(
     cond_0 = ~df["Species"].str.contains("#")
     cond_1 = min_freq <= df["Freq-GHz(rest frame,redshifted)"]
     cond_2 = df["Freq-GHz(rest frame,redshifted)"] <= max_freq
-    if object_name is not None:
+    if object_name is not None and object_name in df.columns:
         cond_3 = df[object_name] == 1
     else:
         cond_3 = [True] * len(df)
@@ -260,8 +262,10 @@ def make_plot_data(lines: List[Line]) -> Tuple[List[float], List[float], List[fl
     transitions: List[str] = []
     for line in lines:
         obs_freqs.append(line.observed_freq_GHz)
-        start_freqs.append(line.vblue_kms)
-        end_freqs.append(line.vred_kms)
+        start_freq = obs_freq_at_vlsr(line.rest_freq_GHz, line.vred_kms)
+        start_freqs.append(start_freq)
+        end_freq = obs_freq_at_vlsr(line.rest_freq_GHz, line.vblue_kms)
+        end_freqs.append(end_freq)
         transitions.append(get_transition(line))
     return obs_freqs, start_freqs, end_freqs, transitions
 
@@ -421,23 +425,31 @@ def reset_values_for_blended_lines(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def main() -> None:
-    all_lines: List[Line] = []
-    observations = get_observations()
-    for observation in observations:
-        if observation.object == "IRC+10216":
-            plot_file_path = f"./Figures/CW_Leo/cwleo.{observation.band}.{observation.obs_id}.WBS.sp1.ave.resampled.lines.v{VERSION}.pdf"
-            lines = get_lines_and_plot_observation(
-                observation, use_object_name=True, show_only=False,
-                plot_file_path=plot_file_path
-            )
-            all_lines.extend(lines)
-
-    records = [asdict(line) for line in all_lines]
+def save_result_csv(lines: List[Line]) -> None:
+    records = [asdict(line) for line in lines]
     df_line = pd.DataFrame.from_records(records)
     df_line = df_line.sort_values(["band", "obs_id", "observed_freq_GHz"])
     df_line = reset_values_for_blended_lines(df_line)
     df_line.to_csv(OUTPUT_TABLE_PATH, sep=";", index=False, quoting=csv.QUOTE_NONE)
+
+
+def main() -> None:
+    start = timer()
+
+    all_lines: List[Line] = []
+    observations = get_observations()
+    for observation in observations:
+        # if observation.object == "IRC+10216":
+        #     plot_file_path = f"./Figures/CW_Leo/cwleo.{observation.band}.{observation.obs_id}.WBS.sp1.ave.resampled.lines.v{VERSION}.pdf"
+        lines = get_lines_and_plot_observation(
+            observation, use_object_name=True, show_only=False,
+            # plot_file_path=plot_file_path
+        )
+        all_lines.extend(lines)
+
+    save_result_csv(all_lines)
+
+    print(f"Runtime: {timer() - start}s")
 
 
 if __name__ == "__main__":
